@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" packages="com.cognizant.lms.userservice.logging">
+    <Properties>
+        <Property name="serviceName">${spring:spring.application.name}</Property>
+        <Property name="serviceVersion">${spring:info.app.version}</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="LocalConsole" target="SYSTEM_OUT">
+            <PatternLayout>
+                <pattern>%style{%d{dd-MM-yyyy HH:mm:ss.SSS}}{cyan} %X{requestId} %X{tenantCode} ${serviceName} ${serviceVersion} %style{[%thread]}{magenta} %-5level %logger{35} - %maskSensitive{%msg}%n</pattern>
+            </PatternLayout>
+        </Console>
+
+        <Console name="LambdaConsole" target="SYSTEM_OUT">
+            <PatternLayout>
+                <pattern>
+                    {
+                    "timestamp": "%d{dd-MM-yyyy HH:mm:ss.SSS}",
+                    "requestId": "%X{requestId}",
+                    "tenantCode": "%X{tenantCode}",
+                    "serviceName": "${serviceName}",
+                    "serviceVersion": "${serviceVersion}",
+                    "level": "%level",
+                    "thread": "[%thread]",
+                    "logger": "%logger{35}",
+                    "message": "%maskSensitive{%msg}"
+                    }
+                </pattern>
+            </PatternLayout>
+        </Console>
+
+        <Routing name="RoutingAppender">
+            <Routes pattern="${env:APP_ENV}">
+                <Route ref="LocalConsole" key="local"/>
+                <Route ref="LambdaConsole" key="dev"/>
+            </Routes>
+        </Routing>
+    </Appenders>
+
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="RoutingAppender"/>
+        </Root>
+    </Loggers>
+</Configuration>

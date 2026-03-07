@@ -1,0 +1,70 @@
+version: 0.2
+
+env:
+  variables:
+      S3_BUCKET: "lms-release-management"  # S3 bucket name used for deployment tracking
+  secrets-manager:
+    APP_ID: "lms-scans-secrets:APP_ID"
+    INSTALLATION_ID: "lms-scans-secrets:INSTALLATION_ID"
+    PRIVATE_KEY_BASE64: "lms-scans-secrets:PRIVATE_KEY_BASE64"
+  git-credential-helper: yes
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      # Install Terraform
+      - echo "Installing Terraform..."
+      - curl -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.11.4/terraform_1.11.4_linux_amd64.zip
+      - unzip /tmp/terraform.zip -d /usr/local/bin/
+      - terraform --version
+
+      # Cloning 'lms-cicd-scrips' repo
+      - echo "Cloning centralized utility repo..."
+      - git clone https://github.com/Cognizant-SPE/lms-cicd-scripts.git /tmp/lms-cicd-scripts
+      
+  pre_build:
+    commands:
+      # if the temp file cicd/utility/.temp exists, it is a build & deploy pipeline
+      - |
+        if [ -f cicd/utility/.temp ]; then
+          echo "Build & Deploy pipeline detected. Using the current apispec."
+          rm -f cicd/utility/.temp
+        else
+          echo "This is not a Build & Deploy pipeline. Pulling the tagged apispec for deployment."
+          export $(cat "./cicd/$TENANT/$Target_Env/.env")
+          bash /tmp/lms-cicd-scripts/utility/script/gitCloneTag-apispec.sh
+        fi
+  build:
+    on-failure: ABORT
+    commands:
+      - cat cicd/apispec.json
+      - |
+        set -e
+        echo "Deploying using Terraform..."
+        export $(cat "./cicd/$TENANT/$Target_Env/.env")
+        TF_FOLDER_PATH="./cicd/$TENANT/$Target_Env/terraform"
+        echo "Running Terraform from $TF_FOLDER_PATH ..."
+        cd $TF_FOLDER_PATH
+        echo "Environment Variable TFVAR is $TF_VAR_aws_account_id and $TF_VAR_aws_shared_services_account_id"
+        terraform init
+
+        echo "Terraform plan using image version - $TF_VAR_imageversion"
+        terraform plan -out=tfplan.out
+
+        echo "Applying Terraform changes..."
+        terraform apply -auto-approve tfplan.out
+        echo "Terraform Apply completed..."
+  post_build:
+    commands:
+      - echo "Deployment completed successfully."
+      - cd ../../../..
+      - bash /tmp/lms-cicd-scripts/utility/script/deployment-metadata.sh
+      - |
+        if [ "$Target_Env" = "prod" ];then
+          echo "release creation"
+          bash /tmp/lms-cicd-scripts/utility/script/github_release.sh
+          echo "update tag"
+          bash /tmp/lms-cicd-scripts/utility/script/tag-prod-image.sh
+        fi

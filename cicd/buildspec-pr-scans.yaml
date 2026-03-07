@@ -1,0 +1,77 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_DEFAULT_REGION: "us-east-1"
+    RUN_SONARSCAN: "true"
+    RUN_UNITTESTS: "true"
+    CX_TEAM: "Acc-IPReady"
+  secrets-manager:
+    CHECKMARX_SERVER: "lms-scans-secrets:CHECKMARX_SERVER"
+    CHECKMARX_USER: "lms-scans-secrets:CHECKMARX_USER"
+    CHECKMARX_PASSWORD: "lms-scans-secrets:CHECKMARX_PASSWORD"
+    CHECKMARX_CLIENT_ID: "lms-scans-secrets:CHECKMARX_CLIENT_ID"
+    CHECKMARX_CLIENT_SECRET: "lms-scans-secrets:CHECKMARX_CLIENT_SECRET"
+    SONAR_HOST_URL: "lms-scans-secrets:SONAR_HOST_URL"
+    SONAR_TOKEN: "lms-scans-secrets:SONAR_TOKEN"
+    BLACKDUCK_URL: "lms-scans-secrets:BLACKDUCK_URL"
+    BLACKDUCK_TOKEN: "lms-scans-secrets:BLACKDUCK_TOKEN"
+    APP_ID: "lms-scans-secrets:APP_ID"
+    INSTALLATION_ID: "lms-scans-secrets:INSTALLATION_ID"
+    PRIVATE_KEY_BASE64: "lms-scans-secrets:PRIVATE_KEY_BASE64"
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+    commands:
+      # Extract repository name from the GitHub URL
+      - FullRepository_name=$(echo $CODEBUILD_SOURCE_REPO_URL | sed 's|https://github.com/||' | sed 's|.git$||')
+      - export FullRepository_name
+      - REPO_NAME=$(basename "$FullRepository_name")
+      - export REPO_NAME
+      # Install required Python packages for JWT and GitHub API
+      - pip install pyjwt cryptography requests
+      # Generate GitHub access token for API/CLI authentication
+      - |
+        echo "$PRIVATE_KEY_BASE64" | base64 -d > /tmp/gh_key.pem
+        ACCESS_TOKEN=$(python3 -c "import jwt,time,requests,os;k=open('/tmp/gh_key.pem').read();t=jwt.encode({'iat':int(time.time()),'exp':int(time.time())+600,'iss':os.getenv('APP_ID')},k,algorithm='RS256');r=requests.post(f\"https://api.github.com/app/installations/{os.getenv('INSTALLATION_ID')}/access_tokens\",headers={'Authorization':f'Bearer {t}','Accept':'application/vnd.github+json'});print(r.json()['token'])")
+        export ACCESS_TOKEN
+        rm -f /tmp/gh_key.pem
+      # Authenticate GitHub CLI with the generated token
+      - echo "$ACCESS_TOKEN" | gh auth login --with-token
+      # Set Git user config for any git operations
+      - git config --global user.email "noreply@github.com"
+      - git config --global user.name "flowsource-integration"
+      # Clone the scripts repository for scan scripts
+      - git clone https://x-access-token:${ACCESS_TOKEN}@github.com/Cognizant-SPE/lms-cicd-scripts.git /tmp/lms-cicd-scripts
+
+  build:
+    commands:
+      # Run Gradle tests
+      - chmod +x gradlew
+      - |
+        echo "Unit tests"
+        if [ "$RUN_UNITTESTS" != "true" ]
+        then
+          echo "...........* SKIPPING UNIT TESTS *.........."
+        else
+          set -e
+          ./gradlew test
+        fi
+      - PR_NUMBER=$(echo $CODEBUILD_SOURCE_VERSION | sed 's/pr\///')
+      # Run SonarQube scan 
+      - |
+        echo "...........* RUNNING SONAR SCAN *.........."
+        if [ "$RUN_SONARSCAN" = "true" ]
+        then
+          ./gradlew sonar -Dsonar.projectVersion=$PR_NUMBER
+          bash /tmp/lms-cicd-scripts/utility/script/sonar_scan_result.sh
+          echo "...........* SONAR SCAN COMPLETED SUCCESSFULLY *.........."
+        else
+          echo "...........* SKIPPING SONAR SCAN *.........."
+        fi
+        
+  post_build:
+    commands:
+      - bash /tmp/lms-cicd-scripts/utility/script/pr-scans-results-comment.sh
+

@@ -1,0 +1,10 @@
+{
+    "allow-origins": "'*'",
+    "passthroughbehaviour": "when_no_match",
+    "ai_ui_url": "'https://ai.sbx.lms.cognizantproducts.com'",
+    "mls_authorizer_lambda_function": "arn:aws:apigateway:ap-south-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-south-1:162308490983:function:sbx-lms-mls-course-datasync-lambda-authorizer:current-version/invocations",
+    "mls_authorizer_lambda_function_failover": "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:162308490983:function:sbx-lms-mls-course-datasync-lambda-authorizer-failover:current-version/invocations",
+    "ecs_backend_base_url": "http://internal-sbx1-lms-ecs-cluster-1192730850.us-east-1.elb.amazonaws.com:8080",
+    "ecs_backend_alb_arn": "arn:aws:elasticloadbalancing:us-east-1:885657071929:loadbalancer/app/sbx1-lms-ecs-cluster/4512402bb2d35fd1",
+    "ecs_vpc_link_id": "c43x5l"
+}

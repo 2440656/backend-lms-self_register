@@ -1,0 +1,164 @@
+version: 0.2
+
+env:
+  variables:
+    ECR_REPOSITORY_URI: "061051225269.dkr.ecr.us-east-1.amazonaws.com" # URI of ECR repository
+    AWS_DEFAULT_REGION: "us-east-1" # Replace this with your AWS region
+    RUN_TLCLISCAN: "true"
+    RUN_SONARSCAN: "true"
+    RUN_CHECKMARX: "true"
+    RUN_BLACKDUCK: "true"
+    CX_TEAM: "Acc-IPReady"
+    SONAR_WAIT_FOR_QUALITY_GATE: "true"
+
+  secrets-manager:
+    CHECKMARX_SERVER: "lms-scans-secrets:CHECKMARX_SERVER"
+    CHECKMARX_USER: "lms-scans-secrets:CHECKMARX_USER"
+    CHECKMARX_PASSWORD: "lms-scans-secrets:CHECKMARX_PASSWORD"
+    SONAR_HOST_URL: "lms-scans-secrets:SONAR_HOST_URL"
+    SONAR_TOKEN: "lms-scans-secrets:SONAR_TOKEN"
+    BLACKDUCK_URL: "lms-scans-secrets:BLACKDUCK_URL"
+    BLACKDUCK_TOKEN: "lms-scans-secrets:BLACKDUCK_TOKEN"
+    APP_ID: "lms-scans-secrets:APP_ID"
+    INSTALLATION_ID: "lms-scans-secrets:INSTALLATION_ID"
+    PRIVATE_KEY_BASE64: "lms-scans-secrets:PRIVATE_KEY_BASE64"
+
+    ### TWISTCLI SCAN CHANGES - BLOCK BEGIN
+    TWISTCLI_ACCESS_KEY_ID: "lms-scans-secrets:TWISTCLI_ACCESS_KEY_ID"
+    TWISTCLI_ACCESS_SECRET: "lms-scans-secrets:TWISTCLI_ACCESS_SECRET"
+    TWISTCLI_URL_AUTH: "lms-scans-secrets:TWISTCLI_URL_AUTH"
+    PRISMA_CONSOLE: "lms-scans-secrets:PRISMA_CONSOLE"
+    TWISTCLI_PATH_LIN_X86: "lms-scans-secrets:TWISTCLI_PATH_LIN_X86"
+    TWISTCLI_PATH_LIN_ARM: "lms-scans-secrets:TWISTCLI_PATH_LIN_ARM"
+    TWISTCLI_PATH_WIN: "lms-scans-secrets:TWISTCLI_PATH_WIN"
+    ### TWISTCLI SCAN CHANGES - BLOCK END
+  
+  git-credential-helper: yes
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+    commands:
+      - REPO_NAME=$(basename "$FullRepository_name")
+      - export SONAR_PROJECT="$REPO_NAME"
+
+      # Cloning 'lms-cicd-scrips' repo
+      - echo "Cloning centralized utility repo..."
+      - git clone https://github.com/Cognizant-SPE/lms-cicd-scripts.git /tmp/lms-cicd-scripts
+
+      - |
+        if [ "$branchName" != "main" ];then
+          echo "Hotfix branch workflow"
+          bash /tmp/lms-cicd-scripts/utility/script/gitCloneBranch.sh
+        fi
+
+      # Install Checkmarx CLI & Run Scan
+      - |
+        if [ "$RUN_CHECKMARX" = "true" ] && [ "$Target_Env" != "sbx" ]
+        then
+          bash /tmp/lms-cicd-scripts/utility/script/checkmarx-scan.sh
+        else
+          echo "...........* SKIPPING CHECKMARX SCAN *.........."
+        fi
+
+  pre_build:
+    on-failure: ABORT
+    commands:
+      - export $(cat "/tmp/lms-cicd-scripts/utility/release/.env.release")
+      # Image tag
+      - DATE_TAG=$(date +%y%m%d)
+      - |
+        if [ "$branchName" = "main" ]; then
+          IMAGE_TAG="$RELEASE_NAME.$DATE_TAG-$CODEBUILD_BUILD_NUMBER"
+        else
+          IMAGE_TAG="$RELEASE_NAME.$DATE_TAG-$CODEBUILD_BUILD_NUMBER-hotfix"
+        fi
+      # Run Gradle tests
+      - chmod +x gradlew
+      - |
+        echo "Unit tests"
+        set -e
+        ./gradlew test
+      - |
+        echo "Code Analysis - Checkstyle"
+        set -e
+        ./gradlew checkstyleMain
+      - |
+        echo "Code Analysis - Spotbugs"
+        set -e
+        ./gradlew spotbugsMain
+
+      # Run SonarQube scan
+      - |
+        echo "...........* RUNNING SONAR SCAN *.........."
+        if [ "$RUN_SONARSCAN" = "true" ] && [ "$Target_Env" != "sbx" ]
+        then
+          if [ "$SONAR_WAIT_FOR_QUALITY_GATE" = "true" ]; then
+            set -e
+          fi
+          ./gradlew sonar -Dsonar.projectVersion=$IMAGE_TAG
+          echo "...........* SONAR SCAN COMPLETED SUCCESSFULLY *.........."
+        else
+          echo "...........* SKIPPING SONAR SCAN *.........."
+        fi
+      # Run Black Duck Scan
+
+      - echo "Running Black Duck Scan..."
+      - |
+        if [ "$RUN_BLACKDUCK" = "true" ] && [ "$Target_Env" != "sbx" ]
+        then
+          bash /tmp/lms-cicd-scripts/utility/script/blackduck-scan.sh
+        else
+          echo "...........* SKIPPING BLACKDUCK SCAN *.........."
+        fi
+      - ECR_REPOSITORY="$ECR_REPOSITORY_URI/$REPO_NAME"
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY
+      - echo "Branch name is $branchName"
+
+  build:
+    on-failure: ABORT
+    commands:
+      - echo "Building the Docker image...$REPO_NAME:$IMAGE_TAG"
+      - docker build -t $REPO_NAME:$IMAGE_TAG .
+      - echo "Tagging the Docker image with the image tag..."
+      - docker tag $REPO_NAME:$IMAGE_TAG $ECR_REPOSITORY:$IMAGE_TAG
+
+      ### TWISTCLI SCAN CHANGES - BLOCK BEGIN
+      ###  Download & Run TwistCLI scan
+      - |
+        echo "...........* TWISTCLI  SCAN BLOCK  *.........."
+        if [ "$RUN_TLCLISCAN" = "true" ] && [ "$Target_Env" != "sbx" ]
+        then
+          bash /tmp/lms-cicd-scripts/utility/script/twistcli-scan.sh
+        else
+          echo "...........* SKIPPING TWISTCLI SCAN *.........."
+        fi
+      ### TWISTCLI SCAN CHANGES - BLOCK END
+      - echo "Pushing the Docker image to ECR..."
+      - docker push $ECR_REPOSITORY:$IMAGE_TAG
+      - echo "Docker image  for commitid $CommitId successfully pushed to ECR - $ECR_REPOSITORY:$IMAGE_TAG"
+
+  post_build:
+    commands:
+      - |
+        if [ "$Target_Env" = "dev" ]
+        then
+          sed -i "s/TF_VAR_imageversion=.*/TF_VAR_imageversion=$IMAGE_TAG/" cicd/community/dev/.env
+        elif [ "$Target_Env" = "sbx" ]
+        then
+          sed -i "s/TF_VAR_imageversion=.*/TF_VAR_imageversion=$IMAGE_TAG/" cicd/community/sbx/.env
+        fi
+      - bash /tmp/lms-cicd-scripts/utility/script/gitTag.sh
+      # create a temp file under cicd/utility to flag it is the build & deploy pipeline
+      # Ensure directory exists before writing temp file
+      - mkdir -p cicd/utility
+      - echo "BUILD_AND_DEPLOY_PIPELINE=true" > cicd/utility/.temp
+
+artifacts:
+  files:
+    - "cicd/community/**/*"
+    - "cicd/utility/**/*"
+    - "cicd/**/*"
+    - "scan-lambda-src/**/*"

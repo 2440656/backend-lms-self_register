@@ -1,0 +1,75 @@
+flowchart TD
+  Start["User opens LMS app"] --> Intro["Intro Page (Login/Register)"]
+  Intro --> BootAPI["API\nGET /api/v1/system/bootstrap"]
+  Intro --> ProvidersAPI["API\nGET /api/v1/auth/providers"]
+  Intro --> Choice{"User clicks"}
+
+  Choice -->|Login| LoginMethod{"Login type"}
+  Choice -->|Register| RegisterMethod{"Register type"}
+
+  RegisterMethod -->|Email| RegisterForm["Fill registration form"]
+  RegisterForm --> RegisterAPI["API\nPOST /api/v1/auth/register/email"]
+  RegisterAPI --> VerifyScreen["Email verification screen"]
+  VerifyScreen --> VerifyAction{"Verify or Resend"}
+  VerifyAction -->|Verify| VerifyAPI["API\nPOST /api/v1/auth/email/verify"]
+  VerifyAction -->|Resend| ResendAPI["API\nPOST /api/v1/auth/email/resend"]
+  ResendAPI --> VerifyScreen
+  VerifyAPI --> AuthReady["Authenticated"]
+
+  RegisterMethod -->|Google/LinkedIn/GitHub/Cognizant SSO| SSOStart["Click SSO button"]
+  SSOStart --> SSOStartAPI["API\nPOST /api/v1/auth/sso/:provider/start"]
+  SSOStartAPI --> SSOCallbackAPI["API\nGET /api/v1/auth/sso/:provider/callback"]
+  SSOCallbackAPI --> AuthReady
+
+  LoginMethod -->|Email login| LoginForm["Enter email + password"]
+  LoginForm --> LoginAPI["API\nPOST /api/v1/auth/login/email"]
+  LoginAPI --> AuthReady
+
+  LoginMethod -->|SSO login| LoginSSO["Click SSO login"]
+  LoginSSO --> LoginSSOStartAPI["API\nPOST /api/v1/auth/sso/:provider/start"]
+  LoginSSOStartAPI --> LoginSSOCallbackAPI["API\nGET /api/v1/auth/sso/:provider/callback"]
+  LoginSSOCallbackAPI --> AuthReady
+
+  AuthReady --> OnboardingStatusAPI["API\nGET /api/v1/onboarding/status"]
+  OnboardingStatusAPI --> OnboardingCheck{"Onboarding completed?"}
+
+  OnboardingCheck -->|No| PersonalDetails["Personal details step"]
+  PersonalDetails --> MeAPI["API\nGET /api/v1/users/me"]
+  PersonalDetails --> SavePersonalAPI["API\nPATCH /api/v1/users/me/personal-details"]
+  PersonalDetails --> OptionalPasswordAPI["API\nPATCH /api/v1/users/me/security/password"]
+  SavePersonalAPI --> RoleStep["Aspirational role step"]
+
+  RoleStep --> SaveRoleAPI["API\nPUT /api/v1/onboarding/aspirational-role"]
+  SaveRoleAPI --> InterestsStep["Interests step"]
+  InterestsStep --> SuggestAPI["API\nGET /api/v1/interests/suggestions?role=<role>"]
+  InterestsStep --> GetInterestsAPI["API\nGET /api/v1/users/me/interests"]
+  InterestsStep --> AddInterestsAPI["API\nPOST /api/v1/users/me/interests"]
+  InterestsStep --> RemoveInterestAPI["API\nDELETE /api/v1/users/me/interests/:interestId"]
+  InterestsStep --> FinishAction{"Next or Skip for now"}
+  FinishAction --> CompleteOnboardingAPI["API\nPOST /api/v1/onboarding/complete"]
+  CompleteOnboardingAPI --> SuccessScreen["Profile updated successfully"]
+  SuccessScreen --> HomeEntry["Go to home"]
+
+  OnboardingCheck -->|Yes| HomeEntry["Enter home"]
+
+  HomeEntry --> TermsStatusAPI["API\nGET /api/v1/compliance/terms/status"]
+  TermsStatusAPI --> TermsNeeded{"Terms required?"}
+  TermsNeeded -->|Yes| TermsPopup["Auto Terms popup"]
+  TermsPopup --> ActiveTermsAPI["API\nGET /api/v1/compliance/terms/active"]
+  ActiveTermsAPI --> TermsAction{"Accept terms?"}
+  TermsAction -->|Accept| AcceptTermsAPI["API\nPOST /api/v1/compliance/terms/accept"]
+  TermsAction -->|Decline| Blocked["Block normal home access"]
+  AcceptTermsAPI --> HomeLoad
+  TermsNeeded -->|No| HomeLoad
+
+  HomeLoad["Home page"] --> HomeAPI["API\nGET /api/v1/home"]
+  HomeLoad --> SearchAPI["API\nGET /api/v1/search?q=<query>"]
+  HomeLoad --> RecoAPI["API\nGET /api/v1/recommendations"]
+  HomeLoad --> EventsAPI["API\nGET /api/v1/events/upcoming"]
+
+  HomeLoad --> AskNavOpen["Open Ask Navigator"]
+  AskNavOpen --> PromptLibraryAPI["API\nGET /api/v1/navigator/prompts"]
+  AskNavOpen --> CreateSessionAPI["API\nPOST /api/v1/navigator/sessions"]
+  CreateSessionAPI --> SendMessageAPI["API\nPOST /api/v1/navigator/sessions/:sessionId/messages"]
+  SendMessageAPI --> HistoryAPI["API\nGET /api/v1/navigator/sessions/:sessionId/messages"]
+  HistoryAPI --> CloseNav["Close popup and return to home"]

@@ -1,0 +1,127 @@
+# Component Entity: lms-user-service
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: "lms-user-service"
+  appid: "lms-user-service"
+  description: >
+    The User Service is responsible for handling various user-related operations such as bulk user uploads for creation, reactivation, deactivation, updates, and individual edits. It integrates with AWS Cognito for managing user accounts and stores uploaded CSV files in S3 which are processed asynchronously via EventBridge and a manager service. Upon successful user creation, notification emails are sent using SQS. Additionally, the service manages master data like roles, countries, and skills, supports tenant-level configuration settings, and leverages AWS services including DynamoDB, Cognito, S3, EventBridge, and SQS to ensure scalability and reliability.
+  tags:
+    - java
+    - springboot
+    - lambda
+  links:
+    - url: https://github.com/Cognizant-SPE/lms-user-service
+      title: Github Repository
+      icon: github
+    - url: https://dev.azure.com/Cognizant-SPE/LMS/_wiki/wikis
+      title: Wiki
+      icon: docs
+  annotations:
+    flowsource/github-repo-owner: Cognizant-SPE
+    flowsource/github-repo-name: lms-user-service
+    flowsource/durationInDays: '60'
+    flowsource/azure-devops-project-key: 'LMS'
+    flowsource/azure-devops-enable-current-sprint: 'true' # By default, it will be false, if you want to enable it, set it to true
+    flowsource/azure-devops-current-sprint-team-name: 'LMS'
+    flowsource/aws-pipelines: lms-user-service_build-pipeline,lms-user-service_sbx-pipeline,lms-user-service_hotfix-pipeline,community_lms-user-service_dev-deploy-pipeline,community_lms-user-service_qa-deploy-pipeline,community_lms-user-service_stage-deploy-pipeline,community_lms-user-service_prod-deploy-pipeline,cognizant_lms-user-service_stage-deploy-pipeline,cognizant_lms-user-service_prod-deploy-pipeline
+    flowsource/aws-pipelines-trigger: lms-user-service_hotfix-pipeline,lms-user-service_sbx-pipeline
+    flowsource/aws-region: us-east-1
+    flowsource/datadog-tags: env!*
+    flowsource/playwright-s3-bucket-filename: testresults.json
+    flowsource/playwright-s3-bucket-path: qa/latest_report
+    flowsource/sonarqube-project-key: lms-user-service
+    flowsource/checkmarx-project-id: lms-user-service
+    flowsource/blackduck-project-id: lms-user-service
+    backstage.io/techdocs-ref: dir:.
+spec:
+  system: SkillSpring
+  type: service
+  lifecycle: development
+  owner: group:default/dev-group
+  providesApis:
+    - lms-user-service-api
+  consumesApis:
+    - "lms-email-service-api"
+    - "lms-user-scheduler-service"
+  dependsOn:
+    - component:lms-api-lambda-authorizer
+    - DynamoDBTable:tenant-table
+    - EventBridge:event-bridge
+    - SQSQueue:amazon-sqs
+    - S3Bucket:Bucket
+    - DynamoDBTable:amazon-dynamodb
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: SkillSpring
+  description: Learning Management System Platform
+# API Entity: userservice-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: lms-user-service-api
+  description: API for user operations
+  annotations:
+    backstage.io/techdocs-ref: url:./cicd/apispec.json
+spec:
+  owner: group:default/dev-group
+  type: openapi
+  lifecycle: production
+  definition:
+    $text: './cicd/apispec.json'
+
+# Kind: S3 Bucket
+---
+apiVersion: backstage.io/v1alpha1
+kind: S3Bucket
+metadata:
+  name: Bucket
+spec:
+  type: aws-s3
+  owner: group:default/dev-group
+  system: SkillSpring
+# DynamoDB Table
+---
+apiVersion: backstage.io/v1alpha1
+kind: DynamoDBTable
+metadata:
+  name: amazon-dynamodb
+spec:
+  type: aws-dynamodb
+  owner: group:default/dev-group
+  system: SkillSpring
+---
+apiVersion: backstage.io/v1alpha1
+kind: DynamoDBTable
+metadata:
+  name: tenant-table
+  description: DynamoDB table for storing tenant settings
+spec:
+  type: dynamodb-table
+  owner: group:default/dev-group
+# Kind: EventBridge
+---
+apiVersion: backstage.io/v1alpha1
+kind: EventBridge
+metadata:
+  name: event-bridge
+  description: EventBridge for handling S3 upload events
+spec:
+  type: eventbridge
+  owner: group:default/dev-group
+# Kind: SQS Queue
+---
+apiVersion: backstage.io/v1alpha1
+kind: SQSQueue
+metadata:
+  name: amazon-sqs
+  description: SQS queue for sending user notification emails
+  annotations:
+    backstage.io/icon: sqs-queue
+spec:
+  type: sqs-queue
+  owner: group:default/dev-group

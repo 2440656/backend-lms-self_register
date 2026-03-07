@@ -1,0 +1,16 @@
+---
+id: 74f68e65-bfa8-44c7-b426-5df8a2bc5480
+---
+flowchart TD
+  ProfileForm["Profile creation form"] --> Validate{"Mandatory fields valid?"}
+  Validate -->|No| ShowErrors["Show inline validation\nkeep Register disabled"]
+  ShowErrors --> ProfileForm
+
+  Validate -->|Yes| RegisterEnabled["Enable Register button"]
+  RegisterEnabled --> Submit["Submit registration"]
+  Submit --> EmailVerify["Email verification"]
+
+  EmailVerify --> Verified{"Verification successful?"}
+  Verified -->|No| Retry["Retry verification or resend email"]
+  Retry --> EmailVerify
+  Verified -->|Yes| ProfileCompletion["Profile completion steps"]

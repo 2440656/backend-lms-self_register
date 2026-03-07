@@ -1,0 +1,62 @@
+version: 0.2
+
+env:
+  variables:
+      S3_BUCKET: "lms-release-management"  # S3 bucket name used for deployment tracking
+  secrets-manager:
+    APP_ID: "lms-scans-secrets:APP_ID"
+    INSTALLATION_ID: "lms-scans-secrets:INSTALLATION_ID"
+    PRIVATE_KEY_BASE64: "lms-scans-secrets:PRIVATE_KEY_BASE64"
+  git-credential-helper: yes
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      # Install Terraform
+      - echo "Installing Terraform..."
+      - curl -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.11.4/terraform_1.11.4_linux_amd64.zip
+      - unzip /tmp/terraform.zip -d /usr/local/bin/
+      - terraform --version
+
+      # Cloning 'lms-cicd-scrips' repo
+      - echo "Cloning centralized utility repo..."
+      - git clone https://github.com/Cognizant-SPE/lms-cicd-scripts.git /tmp/lms-cicd-scripts
+
+  pre_build:
+    commands:
+      # Load environment variables from .env file
+      - export $(cat "./cicd/$TENANT/$Target_Env/.env")
+      - echo "Loaded audit log image version - $TF_VAR_auditlog_imageversion"
+      
+      # Cloning 'lms-audit-logs-service' repo
+      - git clone --branch main https://github.com/Cognizant-SPE/lms-audit-logs-service.git /tmp/lms-audit-logs-service
+      - cd /tmp/lms-audit-logs-service
+      - echo "Checking out tag $TF_VAR_auditlog_imageversion..."
+      - git checkout -b "$TF_VAR_auditlog_imageversion"
+      - git reset --hard "$TF_VAR_auditlog_imageversion"
+      - cd -
+
+  build:
+    on-failure: ABORT
+    commands:
+      - |
+        set -e
+        echo "Deploying using Terraform..."
+        export $(cat "./cicd/$TENANT/$Target_Env/.env")
+        TF_FOLDER_PATH="./cicd/$TENANT/$Target_Env/auditlog"
+        echo "Running Terraform from $TF_FOLDER_PATH ..."
+        cd $TF_FOLDER_PATH
+        echo "Environment Variable TFVAR is $TF_VAR_aws_account_id and $TF_VAR_aws_shared_services_account_id"
+        terraform init
+
+        echo "Terraform plan using image version - $TF_VAR_auditlog_imageversion"
+        terraform plan -out=tfplan.out
+
+        echo "Applying Terraform changes..."
+        terraform apply -auto-approve tfplan.out
+        echo "Terraform Apply completed..."
+  post_build:
+    commands:
+      - echo "Deployment completed successfully with imageversion - $TF_VAR_auditlog_imageversion."

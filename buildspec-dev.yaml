@@ -1,0 +1,112 @@
+version: 0.2
+
+env:
+  variables:
+    IMAGE_REPO_NAME: "lms-user-service"  # ECR Repository Name
+    IMAGE_TAG: "latest-dev"
+    AWS_DEFAULT_REGION: "us-east-1"      # Replace with AWS Region
+    ECR_REPOSITORY_URI: "999662232303.dkr.ecr.us-east-1.amazonaws.com/lms-user-service"  # URI of ECR Repository
+    TF_FOLDER_PATH: "./infra/dev/user-service-api"
+    CX_PROJECT: "lms-user-service"
+    CX_TEAM: "CxServer"
+    SONAR_PROJECT: "lms-user-service"
+  git-credential-helper: yes
+  secrets-manager:
+    CHECKMARX_SERVER: "lms-scans-secrets:CHECKMARX_SERVER"
+    CHECKMARX_USER: "lms-scans-secrets:CHECKMARX_USER"
+    CHECKMARX_PASSWORD: "lms-scans-secrets:CHECKMARX_PASSWORD"
+    SONAR_HOST_URL: "lms-scans-secrets:SONAR_HOST_URL"
+    SONAR_TOKEN: "lms-scans-secrets:SONAR_TOKEN"
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+    commands:
+      # Install Checkmarx CLI & Run Scan
+      - echo "Installing Checkmarx CLI"
+      - mkdir -p /usr/local/bin/checkmarx-cli
+      - curl -o /usr/local/bin/checkmarx-cli/cxconsoleplugin.zip -L https://download.checkmarx.com/9.5.0/Plugins/CxConsolePlugin-1.1.30.zip
+      - unzip /usr/local/bin/checkmarx-cli/cxconsoleplugin.zip -d /usr/local/bin/checkmarx-cli/
+      - chmod +x /usr/local/bin/checkmarx-cli/runCxConsole.sh
+      - sourceLocation=$(pwd)
+      - echo "...........* RUNNING CHECKMARX SCAN *.........."
+      - |
+        /usr/local/bin/checkmarx-cli/runCxConsole.sh Scan -v \
+          -CxServer "$CHECKMARX_SERVER" \
+          -CxUser "$CHECKMARX_USER" \
+          -CxPassword "$CHECKMARX_PASSWORD" \
+          -ProjectName "$CX_TEAM/Acc-IPReady/$CX_PROJECT" \
+          -LocationType "folder" \
+          -LocationPath "$sourceLocation/" \
+          -preset "Cognizant Default Preset" \
+          -executepackagedependency \
+          -ReportPDF "$sourceLocation/$CX_PROJECT.csv" \
+          -ReportPDF "$sourceLocation/$CX_PROJECT.pdf" \
+      # Install SonarQube Scanner
+      - echo "Installing SonarQube scanner..."
+      - wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip
+      - unzip sonar-scanner-cli-6.2.1.4610-linux-x64.zip
+      - mv sonar-scanner-6.2.1.4610-linux-x64 /opt/sonar-scanner
+      - export PATH=$PATH:/opt/sonar-scanner/bin
+      - sonar-scanner -v
+      # Install Terraform
+      - echo "Installing Terraform..."
+      - curl -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.11.4/terraform_1.11.4_linux_amd64.zip  # Adjust to the latest Terraform version
+      - unzip /tmp/terraform.zip -d /usr/local/bin/
+      - terraform --version
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
+
+  pre_build:
+    commands:
+      - echo "Pulling base image..."
+      - docker pull public.ecr.aws/sam/build-java21:latest
+      - docker pull public.ecr.aws/lambda/java:21
+      - echo "Preparing to build Docker image..."
+      # Retrieve the GitHub commit ID provided by CodeBuild
+      - COMMIT_ID=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG_COMMIT=$COMMIT_ID
+
+  build:
+    commands:
+      - echo "Building the Docker image..."
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      #Run SonarQube Scan
+      - echo "...........* RUNNING SONARQUBE SCAN *.........."
+      - echo "$SONAR_PROJECT:$SONAR_PROJECT"
+      - echo "Sonar URL is $SONAR_HOST_URL"
+      - echo "Sonar Token is $SONAR_TOKEN"
+      - |
+        sonar-scanner \
+          -Dsonar.projectKey=$SONAR_PROJECT \
+          -Dsonar.host.url=$SONAR_HOST_URL \
+          -Dsonar.login=$SONAR_TOKEN \
+          -Dsonar.sources=. \
+          -Dsonar.java.binaries=. \
+
+  post_build:
+    commands:
+
+      - echo "Tagging the Docker image with the commit ID..."
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $ECR_REPOSITORY_URI:$IMAGE_TAG_COMMIT
+      - docker push $ECR_REPOSITORY_URI:$IMAGE_TAG_COMMIT
+
+      - echo "Tagging the image as '$IMAGE_TAG'..."
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $ECR_REPOSITORY_URI:$IMAGE_TAG
+      - docker push $ECR_REPOSITORY_URI:$IMAGE_TAG
+
+      - echo "Docker image successfully pushed to ECR."
+
+      # Terraform commands to run after Docker image is pushed
+      - echo "Running Terraform..."
+      - cd $TF_FOLDER_PATH
+      - terraform init
+      - terraform plan -out=tfplan.out
+      - echo "Applying Terraform changes..."
+      - terraform apply -auto-approve tfplan.out
+
+artifacts:
+  files:
+    - '**/*'
+  discard-paths: yes

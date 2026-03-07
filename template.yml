@@ -1,0 +1,384 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AWS Serverless Spring Boot 3 API - com.cognizant.lms::user-service
+Globals:
+  Api:
+    EndpointConfiguration: REGIONAL
+
+Parameters:
+  AppEnv:
+    Type: String
+    Description: Environment for the application
+  AwsDynamoDbEndpoint:
+    Type: String
+    Description: Dynamo DB Endpoint
+  AwsDynamoDbRolesTableName:
+    Type: String
+    Description: Dynamo DB Table Name for roles
+  AwsDynamoDbLookupTableName:
+    Type: String
+    Description: Dynamo DB Table Name for countries
+  AwsDynamoDbTenantTableName:
+    Type: String
+    Description: Dynamo DB Table Name for tenant
+  AwsDynamoDbRolesPartitionKeyName:
+    Type: String
+    Description: Dynamo DB Table Partition Key Name for roles
+  AwsDynamoDbLogFileTableName:
+    Type: String
+    Description: Dynamo DB Table Name for LogFile
+  AwsDynamoDbLogFileTablePartitionKeyName:
+    Type: String
+    Description: Dynamo DB Table Partition Key Name for LogFile
+  AwsDynamoDbLogFileTableDefaultSortKey:
+    Type: String
+    Description: Dynamo DB Table Default Sort Key for LogFile
+  AwsDynamoDbLogFileTableDefaultSortOrder:
+    Type: String
+    Description: Dynamo DB Table Default Sort Order for LogFile
+  AwsDynamoDbUserTableName:
+    Type: String
+    Description: Dynamo DB Table Name for user
+  AwsDynamoDbUserTablePartitionKeyName:
+    Type: String
+    Description: Dynamo DB Table Partition Key Name for user
+  AwsDynamoDbUserTableDefaultSortKey:
+    Type: String
+    Description: Dynamo DB Table Default Sort Key for user
+  AwsDynamoDbUserTableDefaultSortOrder:
+    Type: String
+    Description: Dynamo DB Table Default Sort Order for user
+  AwsDynamoDbSkillLookupsTableName:
+    Type: String
+    Description: Dynamo DB Table Name for skill lookups
+  AwsS3BucketName:
+    Type: String
+    Description: AWS S3 Bucket Name
+  AwsCognitoUserPoolId:
+    Type: String
+    Description: AWS Cognito user pool id
+  AwsCognitoCertUrl:
+    Type: String
+    Description: AWS Cognito Cert URL
+  AwsCognitoClientId:
+    Type: String
+    Description: AWS Cognito Client Id
+  AwsCognitoDomain:
+    Type: String
+    Description: AWS Cognito Domain
+  AwsCognitoIssuer:
+    Type: String
+    Description: AWS Cognito Issuer
+  AwsRegion:
+    Type: String
+    Description: AWS Region
+  AwsSqsQueueUrl:
+    Type: String
+    Description: AWS SQS Queue URL
+  LocalStoragePath:
+    Type: String
+    Description: Local Storage Path
+  CorsUrl:
+    Type: String
+    Description: CORS URL
+  CourseManagementServiceApiUrl:
+    Type: String
+    Description: Course Management Service API URL
+  DefaultRowPerPage:
+    Type: String
+    Description: Default Row Per Page
+  LmsAdminEmail:
+    Type: String
+    Description: LMS Admin Email
+  LmsFromEmailAddress:
+    Type: String
+    Description: LMS From Email Address
+  LmsUrl:
+    Type: String
+    Description: LMS URL
+  ServiceName:
+    Type: String
+    Description: Service Name
+  LambdaFunctionName:
+    Type: String
+    Description: Custom name for the Lambda function
+  LambdaAuthArn:
+    Type: String
+    Description: Lambda Authorizer ARN
+  ApiGatewayName:
+    Type: String
+    Description: Custom name for the API Gateway
+  RoleArn:
+    Type: String
+    Description: Role ARN
+  AwsDynamoDbUserAuditLogTableName:
+    Type: String
+    Description: Dynamo DB Table Name for user audit log
+  AwsEventDetailType:
+    Type: String
+    Description: AWS Event Detail Type for user management event
+  AwsEventSource:
+    Type: String
+    Description: AWS Event Source for user management event
+  AwsUserManagementEventBusArn:
+    Type: String
+    Description: AWS Event Bus ARN for user management service
+  AwsDynamoDbUserActivityLogTableName:
+    Type: String
+    Description: Dynamo DB Table Name for user activity log
+  AwsIconS3BucketName:
+    Type: String
+    Description: AWS S3 Bucket Name for icons
+  ThumbnailBucketRegionName:
+    Type: String
+    Description: Thumbnail Bucket Region Name
+  AwsLambdaExecWrapper:
+    Type: String
+    Description: AWS Lambda Exec Wrapper
+  AwsDynamoDbUserGlobalSearchHistoryTableName:
+    Type: String
+    Description: Dynamo DB Table Name for user global search history
+  RootDomainPath:
+    Type: String
+    Description: Root Domain Path
+  DefaultTenant:
+    Type: String
+    Description: Default Tenant
+
+Resources:
+  LmsUserServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Ref ApiGatewayName
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: LambdaAuthorizer
+        Authorizers:
+          LambdaAuthorizer:
+            FunctionPayloadType: REQUEST
+            FunctionArn: !Ref LambdaAuthArn
+            Identity:
+              Headers:
+                - Authorization
+
+  LmsUserServiceContainerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      PackageType: Image
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          APP_ENV: !Ref AppEnv
+          AWS_DYNAMODB_ENDPOINT: !Ref AwsDynamoDbEndpoint
+          AWS_DYNAMODB_ROLES_TABLE_NAME: !Ref AwsDynamoDbRolesTableName
+          AWS_DYNAMODB_ROLES_TABLE_PARTITION_KEY_NAME: !Ref AwsDynamoDbRolesPartitionKeyName
+          AWS_DYNAMODB_LOOKUP_TABLE_NAME: !Ref AwsDynamoDbLookupTableName
+          AWS_DYNAMODB_USER_TABLE_DEFAULT_SORT_KEY: !Ref AwsDynamoDbUserTableDefaultSortKey
+          AWS_DYNAMODB_USER_TABLE_DEFAULT_SORT_ORDER: !Ref AwsDynamoDbUserTableDefaultSortOrder
+          AWS_DYNAMODB_USER_TABLE_NAME: !Ref AwsDynamoDbUserTableName
+          AWS_DYNAMODB_USER_AUDIT_LOG_TABLE_NAME: !Ref AwsDynamoDbUserAuditLogTableName
+          AWS_DYNAMODB_USER_TABLE_PARTITION_KEY_NAME: !Ref AwsDynamoDbUserTablePartitionKeyName
+          REGION_NAME: !Ref AwsRegion
+          AWS_COGNITO_USER_POOL_ID: !Ref AwsCognitoUserPoolId
+          AWS_S3_BUCKET_NAME: !Ref AwsS3BucketName
+          AWS_COGNITO_CERT_URL: !Ref AwsCognitoCertUrl
+          AWS_COGNITO_CLIENT_ID: !Ref AwsCognitoClientId
+          AWS_COGNITO_DOMAIN: !Ref AwsCognitoDomain
+          AWS_COGNITO_ISSUER: !Ref AwsCognitoIssuer
+          AWS_SQS_QUEUE_URL: !Ref AwsSqsQueueUrl
+          LOCAL_STORAGE_PATH: !Ref LocalStoragePath
+          CORS_URL: !Ref CorsUrl
+          DEFAULT_ROWS_PER_PAGE: !Ref DefaultRowPerPage
+          LMS_ADMIN_EMAIL: !Ref LmsAdminEmail
+          LMS_FROM_EMAIL_ADDRESS: !Ref LmsFromEmailAddress
+          LMS_URL: !Ref LmsUrl
+          AWS_DYNAMODB_LOGFILE_TABLE_NAME: !Ref AwsDynamoDbLogFileTableName
+          AWS_DYNAMODB_LOGFILE_TABLE_PARTITION_KEY_NAME: !Ref AwsDynamoDbLogFileTablePartitionKeyName
+          AWS_DYNAMODB_LOGFILE_TABLE_DEFAULT_SORT_KEY: !Ref AwsDynamoDbLogFileTableDefaultSortKey
+          AWS_DYNAMODB_LOGFILE_TABLE_DEFAULT_SORT_ORDER: !Ref AwsDynamoDbLogFileTableDefaultSortOrder
+          AWS_DYNAMODB_SKILL_LOOKUPS_TABLE_NAME: !Ref AwsDynamoDbSkillLookupsTableName
+          COURSE_MANAGEMENT_SERVICE_API_URL: !Ref CourseManagementServiceApiUrl
+          SERVICE_NAME: !Ref ServiceName
+          ROLE_ARN: !Ref RoleArn
+          AWS_DYNAMODB_TENANT_TABLE_NAME: !Ref AwsDynamoDbTenantTableName
+          AWS_USER_MANAGEMENT_EVENT_DETAIL_TYPE: !Ref AwsEventDetailType
+          AWS_USER_MANAGEMENT_EVENT_SOURCE: !Ref AwsEventSource
+          AWS_USER_MANAGEMENT_EVENT_BUS_ARN: !Ref AwsUserManagementEventBusArn
+          AWS_DYNAMODB_USER_ACTIVITY_LOG_TABLE_NAME: !Ref AwsDynamoDbUserActivityLogTableName
+          AWS_ICONS_S3_BUCKET_NAME: !Ref AwsIconS3BucketName
+          THUMBNAIL_BUCKET_REGION_NAME: !Ref ThumbnailBucketRegionName
+          AWS_LAMBDA_EXEC_WRAPPER: !Ref AwsLambdaExecWrapper
+          AWS_DYNAMODB_USER_GLOBAL_SEARCH_HISTORY_TABLE_NAME: !Ref AwsDynamoDbUserGlobalSearchHistoryTableName
+          ROOT_DOMAIN_PATH: !Ref RootDomainPath
+          DEFAULT_TENANT: !Ref DefaultTenant
+
+      MemorySize: 512
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - arn:aws:iam::999662232303:policy/LMSLambdaPolicy
+      Timeout: 30
+      Events:
+        RoleApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/roles
+            Method: get
+        RegisterLoggedInUserApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/current-user/register-login
+            Method: post
+        RefreshTokenApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/current-user/refresh-token
+            Method: post
+        GetAllUsersApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users
+            Method: get
+        SkillLookupsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/skillLookups
+            Method: get
+        OperationsHistoryApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/errorLogs
+            Method: get
+        DbImportApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/dbimport
+            Method: post
+        DownloadApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/download
+            Method: get
+        UserInstitutionApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/institutions
+            Method: get
+        ScheduleUserExpiryApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/scheduleUserExpiry
+            Method: get
+        UserUploadApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/upload
+            Method: post
+        GetUserByPkApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/{partitionKeyValue}
+            Method: get
+        UpdateUserByPkApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/{partitionKeyValue}
+            Method: put
+        ReSendEmailApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/email/{email}
+            Method: post
+        UserDbImportApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/dbimport
+            Method: post
+        GetValidUsersApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/validUsers
+            Method: get
+        GetSkillCategoryBySkillName:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/skillLookups/skillCategory
+            Method: get
+        BulkUserUpload:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/uploadUser
+            Method: post
+
+        GetTenantSettingsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/tenantSettings
+            Method: get
+
+        CreateTenantSettingsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/tenantSettings/contentModeration
+            Method: post
+
+        UpdateTenantSettingsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/tenantSettings/contentModeration
+            Method: put
+
+        CountryApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/countries
+            Method: get
+
+        UserCountryUpdateApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/dbimport/users/country/update
+            Method: post
+
+        TemporaryPassweordApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LmsUserServiceApi
+            Path: /api/v1/users/temp-password
+            Method: post
+
+    Metadata:
+      DockerTag: latest-sbx
+      DockerContext: .
+      Dockerfile: Dockerfile
+
+Outputs:
+  LmsUserServiceContainerFunction:
+    Description: URL for application
+    Value: !Sub 'https://${LmsUserServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${LmsUserServiceApi.Stage}'
+    Export:
+      Name: LmsUserServiceContainerFunction

@@ -1,0 +1,18 @@
+package com.cognizant.lms.userservice.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class EmailSelfRegistrationRequest {
+  private String firstName;
+  private String lastName;
+  private String email;
+  private String country;
+  private String institute;
+  private String password;
+  private String confirmPassword;
+}

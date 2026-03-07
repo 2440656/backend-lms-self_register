@@ -1,0 +1,20 @@
+---
+id: a6a32809-75e4-4d3f-9163-b45cf001f956
+---
+flowchart LR
+  Intro["Intro Page"] --> Choice{"Choose action"}
+  Choice -->|Existing user| Login["Login"]
+  Choice -->|New user| RegisterEntry["Register"]
+
+  RegisterEntry --> SignUpMethod{"Select sign-up method"}
+  SignUpMethod --> Google["Continue with Google"]
+  SignUpMethod --> LinkedIn["Continue with LinkedIn"]
+  SignUpMethod --> GitHub["Continue with GitHub"]
+  SignUpMethod --> CognizantSSO["Continue with Cognizant SSO"]
+  SignUpMethod --> Email["Sign up with email"]
+
+  Google --> ProfileForm["Profile creation form"]
+  LinkedIn --> ProfileForm
+  GitHub --> ProfileForm
+  CognizantSSO --> ProfileForm
+  Email --> ProfileForm

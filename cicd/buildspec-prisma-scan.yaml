@@ -1,0 +1,74 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_DEFAULT_REGION: "us-east-1"
+    RUN_TLCLISCAN: "true"
+    CX_TEAM: "Acc-IPReady"
+  secrets-manager:
+    TWISTCLI_ACCESS_KEY_ID: "lms-scans-secrets:TWISTCLI_ACCESS_KEY_ID"
+    TWISTCLI_ACCESS_SECRET: "lms-scans-secrets:TWISTCLI_ACCESS_SECRET"
+    TWISTCLI_URL_AUTH: "lms-scans-secrets:TWISTCLI_URL_AUTH"
+    PRISMA_CONSOLE: "lms-scans-secrets:PRISMA_CONSOLE"
+    TWISTCLI_PATH_LIN_X86: "lms-scans-secrets:TWISTCLI_PATH_LIN_X86"
+    TWISTCLI_PATH_LIN_ARM: "lms-scans-secrets:TWISTCLI_PATH_LIN_ARM"
+    TWISTCLI_PATH_WIN: "lms-scans-secrets:TWISTCLI_PATH_WIN"
+    APP_ID: "lms-scans-secrets:APP_ID"
+    INSTALLATION_ID: "lms-scans-secrets:INSTALLATION_ID"
+    PRIVATE_KEY_BASE64: "lms-scans-secrets:PRIVATE_KEY_BASE64"
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+    commands:
+      # Extract repository name from the GitHub URL
+      - FullRepository_name=$(echo $CODEBUILD_SOURCE_REPO_URL | sed 's|https://github.com/||' | sed 's|.git$||')
+      - export FullRepository_name
+      - REPO_NAME=$(basename "$FullRepository_name")
+      - export REPO_NAME
+      # Install required Python packages for JWT and GitHub API
+      - pip install pyjwt cryptography requests
+      # Generate GitHub access token for API/CLI authentication
+      - |
+        echo "$PRIVATE_KEY_BASE64" | base64 -d > /tmp/gh_key.pem
+        ACCESS_TOKEN=$(python3 -c "import jwt,time,requests,os;k=open('/tmp/gh_key.pem').read();t=jwt.encode({'iat':int(time.time()),'exp':int(time.time())+600,'iss':os.getenv('APP_ID')},k,algorithm='RS256');r=requests.post(f\"https://api.github.com/app/installations/{os.getenv('INSTALLATION_ID')}/access_tokens\",headers={'Authorization':f'Bearer {t}','Accept':'application/vnd.github+json'});print(r.json()['token'])")
+        export ACCESS_TOKEN
+        rm -f /tmp/gh_key.pem
+      # Authenticate GitHub CLI with the generated token
+      - echo "$ACCESS_TOKEN" | gh auth login --with-token
+      # Set Git user config for any git operations
+      - git config --global user.email "noreply@github.com"
+      - git config --global user.name "flowsource-integration"
+      # Clone the scripts repository for scan scripts
+      - git clone https://x-access-token:${ACCESS_TOKEN}@github.com/Cognizant-SPE/lms-cicd-scripts.git /tmp/lms-cicd-scripts
+
+  build:
+    commands:
+      # Extract PR number and set image tag
+      - PR_NUMBER=$(echo $CODEBUILD_SOURCE_VERSION | sed 's/pr\///')
+      - IMAGE_TAG=$PR_NUMBER
+      - export IMAGE_TAG
+      # Build Docker image for scanning
+      - echo "Building the Docker image...$REPO_NAME:$IMAGE_TAG"
+      - docker build -t $REPO_NAME:$IMAGE_TAG .
+      # Run TwistCLI scan if enabled
+      - |
+        echo "...........* TWISTCLI  SCAN BLOCK  *.........."
+        if [ "$RUN_TLCLISCAN" = "true" ]
+        then
+          bash /tmp/lms-cicd-scripts/utility/script/twistcli-scan.sh
+        else
+          echo "...........* SKIPPING TWISTCLI SCAN *.........."
+        fi
+
+  post_build:
+    commands:
+      # Post scan results as a comment on the PR
+      - bash /tmp/lms-cicd-scripts/utility/script/pr-scans-results-comment.sh
+      # Fail build if prisma_flag.txt exists and is False (after posting comment)
+      - |
+        if [ -f prisma_flag.txt ] && [ "$(cat prisma_flag.txt)" = "False" ]; then
+          echo "Prisma scan failed: Critical or High vulnerabilities found."
+          exit 1
+        fi

@@ -1,0 +1,29 @@
+---
+id: 0e9d25c0-38e2-41dc-9b75-9e89f51e86c3
+---
+flowchart TD
+  ProfileCompletion["Profile completion"] --> PersonalDetails["Update personal details"]
+  PersonalDetails --> AspirationalRole["Set aspirational role"]
+  AspirationalRole --> Interests["Add or remove areas of interest"]
+
+  Interests --> Decision{"Skip for now or Next?"}
+  Decision -->|Skip for now| Success["Profile updated successfully"]
+  Decision -->|Next| Success
+
+  Success --> Home["Home with banner"]
+  Home --> TermsGate{"First sign-in in current policy version?"}
+  TermsGate -->|Yes| TermsPopup["Auto popup: Terms and Conditions"]
+  TermsPopup --> TermsAction{"Accept terms?"}
+  TermsAction -->|No| SignOutOrBlock["Block access and sign out or stay blocked"]
+  TermsAction -->|Yes| Discover["Search, Recommended, Events"]
+  TermsGate -->|No| Discover
+  Discover --> AskNavOpen["Open Ask Navigator"]
+
+  AskNavOpen --> PromptChoice{"Input type"}
+  PromptChoice --> PromptLibrary["Choose prompt from library"]
+  PromptChoice --> FreeText["Enter free text query"]
+
+  PromptLibrary --> AIResponse["Navigator suggestions and guidance"]
+  FreeText --> AIResponse
+  AIResponse --> CloseNav["Close popup"]
+  CloseNav --> Discover
