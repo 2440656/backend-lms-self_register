@@ -26,6 +26,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
-import org.springframework.security.web.util.matcher.RequestMatcher;
 
 
 @Slf4j
@@ -56,15 +56,12 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
 
   private UserFilterSortDao userFilterSortDao;
 
-  private final List<RequestMatcher> publicEndpoints;
-
   public JWTAuthenticationFilter(AuthenticationManager authenticationManager,
                                  @Value("${AWS_COGNITO_CERT_URL}") String awsCognitoCertUrl,
                                  @Value("${AWS_COGNITO_CLIENT_ID}") String awsCognitoClientId,
                                  @Value("${AWS_COGNITO_ISSUER}") String awsCognitoIssuer,
                                  RoleDao roleDao, UserFilterSortDao userFilterSortDao, UserService userService,
-                                 CognitoConfigService cognitoConfigService,
-                                 List<RequestMatcher> publicEndpoints) {
+                                 CognitoConfigService cognitoConfigService) {
     super(authenticationManager);
     this.awsCognitoCertUrl = awsCognitoCertUrl;
     this.userService = userService;
@@ -73,7 +70,6 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
     this.roleDao = roleDao;
     this.userFilterSortDao = userFilterSortDao;
     this.cognitoConfigService = cognitoConfigService;
-    this.publicEndpoints = publicEndpoints;
   }
 
   CognitoConfigDTO cognitoConfigDTO;
@@ -82,6 +78,19 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
   @Override
   protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                   FilterChain filterChain) throws ServletException, IOException {
+    String[] publicURL = {"/actuator/health", "/api/v1/auth/register/email",
+      "/api/v1/auth/register/email/verify-otp", "/api/v1/auth/register/email/resend-otp",
+      "/api/v1/auth/email/verify", "/api/v1/auth/email/resend"};
+    String requestPath = request.getRequestURI();
+    String requestUrl = request.getRequestURL() != null ? request.getRequestURL().toString() : "";
+    if ((requestPath != null && Arrays.stream(publicURL)
+        .anyMatch(url -> requestPath.equalsIgnoreCase(url)
+          || requestPath.toLowerCase().contains(url.toLowerCase())))
+      || Arrays.stream(publicURL).anyMatch(url -> requestUrl.toLowerCase().contains(url.toLowerCase()))) {
+      filterChain.doFilter(request, response);
+      return;
+    }
+
     String origin = request.getHeader("Origin");
     String tenantIdentifier;
     if( origin == null || origin.isEmpty()) {
@@ -94,11 +103,6 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
     log.info("Cognito Config DTO in JWTAuthenticationFilter: " + cognitoConfigDTO);
     response.setHeader("X-FRAME-OPTIONS", "DENY"); //sast12Apr
     log.info("Request URL: " + request.getRequestURL().toString());
-    String requestPath = request.getRequestURI();
-    if (publicEndpoints.stream().anyMatch(matcher -> matcher.matches(request))) {
-      filterChain.doFilter(request, response);
-      return;
-    }
     if (requestPath!=null && requestPath.contains(Constants.MLS_ENROLL_ENDPOINT)){
       String token = sanitizeData(getTokenFromAuthorizationHeader(request));
       if (token == null) {
@@ -141,7 +145,12 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
       }
 
     }
-    String token = sanitizeData(request.getHeader(Constants.AUTHORIZATION));
+
+    if (Arrays.stream(publicURL)
+            .anyMatch(url -> request.getRequestURL().toString().contains(url))) {
+      filterChain.doFilter(request, response);
+    } else {
+      String token = sanitizeData(request.getHeader(Constants.AUTHORIZATION));
 
       if (token != null && !token.isEmpty()) {
         if (token.startsWith("Bearer ")) {
@@ -329,10 +338,11 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
           log.error("Error occurred while parsing JWT token: {}", e.getMessage());
           createTokenErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Something went wrong. Please try again later.", response);
         }
-    }
-    else {
-      log.info("NO Token Found");
-      createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(), "No Token Found", response);
+      }
+      else {
+        log.info("NO Token Found");
+        createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(), "No Token Found", response);
+      }
     }
   }
 
