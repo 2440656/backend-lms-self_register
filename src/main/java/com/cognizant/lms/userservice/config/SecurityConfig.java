@@ -25,6 +25,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
 import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+import java.util.List;
 
 /**
  * Security Configuration class for the application.
@@ -34,6 +37,15 @@ import org.springframework.security.web.header.writers.XXssProtectionHeaderWrite
 @EnableWebSecurity
 @EnableMethodSecurity(securedEnabled = true, prePostEnabled = true, jsr250Enabled = true, proxyTargetClass = true)
 public class SecurityConfig {
+
+  public static final List<RequestMatcher> PUBLIC_ENDPOINTS = List.of(
+      new AntPathRequestMatcher("/actuator/health"),
+      new AntPathRequestMatcher("/api/v1/auth/register/email", HttpMethod.POST.name()),
+      new AntPathRequestMatcher("/api/v1/auth/register/email/verify-otp", HttpMethod.POST.name()),
+      new AntPathRequestMatcher("/api/v1/auth/email/verify", HttpMethod.POST.name()),
+      new AntPathRequestMatcher("/api/v1/auth/register/email/resend-otp", HttpMethod.POST.name()),
+      new AntPathRequestMatcher("/api/v1/auth/email/resend", HttpMethod.POST.name())
+  );
 
   @Autowired
   private ApplicationContext applicationContext;
@@ -70,21 +82,12 @@ public class SecurityConfig {
         (AuthenticationManager) applicationContext.getBean("authenticationManager");
     JWTAuthenticationFilter customFilter =
         new JWTAuthenticationFilter(manager, awsCognitoCertUrl, awsCognitoClientId,
-            awsCognitoIssuer, roleDao, userFilterSortDao, userService, cognitoConfigService);
+        awsCognitoIssuer, roleDao, userFilterSortDao, userService, cognitoConfigService,
+        PUBLIC_ENDPOINTS);
     http.csrf(AbstractHttpConfigurer::disable).authorizeHttpRequests(
             (requests) -> requests
-                .requestMatchers("/actuator/health")
-                .permitAll()
-              .requestMatchers(HttpMethod.POST, "/api/v1/auth/register/email")
-              .permitAll()
-              .requestMatchers(HttpMethod.POST, "/api/v1/auth/register/email/verify-otp")
-              .permitAll()
-              .requestMatchers(HttpMethod.POST, "/api/v1/auth/email/verify")
-              .permitAll()
-              .requestMatchers(HttpMethod.POST, "/api/v1/auth/register/email/resend-otp")
-              .permitAll()
-              .requestMatchers(HttpMethod.POST, "/api/v1/auth/email/resend")
-              .permitAll()
+          .requestMatchers(PUBLIC_ENDPOINTS.toArray(RequestMatcher[]::new))
+          .permitAll()
                 .anyRequest()
                 .authenticated()
             )
