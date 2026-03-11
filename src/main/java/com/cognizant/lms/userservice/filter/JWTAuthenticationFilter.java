@@ -101,6 +101,7 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
     }
     cognitoConfigDTO = cognitoConfigService.getCognitoDetails(tenantIdentifier);
     log.info("Cognito Config DTO in JWTAuthenticationFilter: " + cognitoConfigDTO);
+    log.info("Tenant Code from Config: {}", cognitoConfigDTO != null ? cognitoConfigDTO.getTenantCode() : "NULL");
     response.setHeader("X-FRAME-OPTIONS", "DENY"); //sast12Apr
     log.info("Request URL: " + request.getRequestURL().toString());
     if (requestPath!=null && requestPath.contains(Constants.MLS_ENROLL_ENDPOINT)){
@@ -198,48 +199,93 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
               return;
             }
 
-            if(customClaims == null || customClaims.isEmpty()) {
-              log.error("Custom claims are missing in the token");
-              createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(),
-                      "Custom claims are missing in the token", response);
-              return;
-            }
+            userEmail= userEmail.toLowerCase();
+            
+            // Check if custom claims are present and have user data
+            boolean hasCustomClaims = customClaims != null && !customClaims.isEmpty();
+            boolean hasUserDataInClaims = hasCustomClaims && 
+                    customClaims.get("pk") != null && !customClaims.get("pk").isEmpty();
 
             TenantDTO tenant = new TenantDTO();
             String portal = request.getHeader("X-Portal-Id");
             log.info("Portal ID from request header: " + portal);
-            tenant.setPk(customClaims.get("tenantCode"));
-            tenant.setIdpPreferences(customClaims.get("idpPreferences"));
+            
+            // Set basic tenant info early for database queries
             tenant.setTenantIdentifier(request.getHeader(Constants.TENANT_HEADER));
             tenant.setClientId(cognitoConfigDTO.getClientId());
             tenant.setIssuer(cognitoConfigDTO.getIssuer());
             tenant.setCertUrl(cognitoConfigDTO.getCertUrl());
             tenant.setPortal(portal);
+            
+            User user;
+            
+            if (!hasUserDataInClaims) {
+              // Custom claims empty or missing user data - need to set tenant before DB query
+              log.info("Custom claims empty or incomplete, setting tenant from config: {}", cognitoConfigDTO.getTenantCode());
+              String actualTenantCode = cognitoConfigDTO.getTenantCode();
+              if (actualTenantCode == null || actualTenantCode.isEmpty()) {
+                log.warn("Tenant code not found in config, falling back to tenantIdentifier: {}", tenantIdentifier);
+                actualTenantCode = tenantIdentifier != null ? tenantIdentifier : "";
+              }
+              tenant.setPk(actualTenantCode);
+              tenant.setIdpPreferences("");
+              TenantUtil.setTenantDetails(tenant);
+              
+              // Now fetch from database using email
+              log.info("Fetching user by email: {}", userEmail);
+              user = userService.getUserByEmailId(userEmail, Constants.ACTIVE_STATUS);
+              
+              if (user == null) {
+                log.error("User not found in database for email: {}", userEmail);
+                createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(),
+                        "User not found in the system", response);
+                return;
+              }
+              
+              // Update tenant details from user if available
+              if (user.getTenant() != null && user.getTenant().getPk() != null && !user.getTenant().getPk().isEmpty()) {
+                log.info("Updating tenant details from user object");
+                tenant.setPk(user.getTenant().getPk());
+                tenant.setIdpPreferences(user.getTenant().getIdpPreferences());
+                TenantUtil.setTenantDetails(tenant);
+              }
+            } else {
+              // Has custom claims with user data - use them
+              tenant.setPk(customClaims.get("tenantCode"));
+              tenant.setIdpPreferences(customClaims.get("idpPreferences"));
+              
+              if (tenant.getPk() == null || tenant.getPk().isEmpty()) {
+                log.error("Tenant not found in the system");
+                createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(),
+                        "Tenant not found in the system", response);
+                return;
+              }
+              
+              log.info("customClaims status: " + customClaims.get("status"));
+              
+              if(customClaims.get("status").equalsIgnoreCase(Constants.NO_USER)  && 
+                      !Constants.LOGIN_OPTION_COGNIZANT_SSO.equalsIgnoreCase(providerName))
+              {
+                String message = "You are not authorized to access Skillspring.";
+                log.info(message);
+                createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(), message, response);
+                return;
+              }
 
-            if (tenant.getPk() == null || tenant.getPk().isEmpty()) {
-              log.error("Tenant not found in the system");
-              createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(),
-                      "Tenant not found in the system", response);
-              return;
+              log.info("Custom Claims: " + customClaims);
+              user = userFromClaims(customClaims, tenant);
+              
+              // Set tenant details after populating from custom claims
+              tenant.setTenantIdentifier(request.getHeader(Constants.TENANT_HEADER));
+              tenant.setClientId(cognitoConfigDTO.getClientId());
+              tenant.setIssuer(cognitoConfigDTO.getIssuer());
+              tenant.setCertUrl(cognitoConfigDTO.getCertUrl());
+              tenant.setPortal(portal);
+              TenantUtil.setTenantDetails(tenant);
             }
-
-            TenantUtil.setTenantDetails(tenant);
-
+            
             log.info("Tenant details set in TenantUtil: " + TenantUtil.getTenantDetails());
-            log.info("customClaims status: " + customClaims.get("status"));
             log.info("providerName: " + providerName);
-
-            if(customClaims.get("status").equalsIgnoreCase(Constants.NO_USER)  && !Constants.LOGIN_OPTION_COGNIZANT_SSO.equalsIgnoreCase(providerName))
-            {
-              String message = "You are not authorized to access Skillspring.";
-              log.info(message);
-              createTokenErrorResponse(HttpStatus.UNAUTHORIZED.value(), message, response);
-              return;
-            }
-            userEmail= userEmail.toLowerCase();
-
-            log.info("Custom Claims: " + customClaims);
-            User user = userFromClaims(customClaims, tenant);
 
             log.info("User fetched from claims: " + user.toString());
 
@@ -298,7 +344,7 @@ public class JWTAuthenticationFilter extends BasicAuthenticationFilter {
             roleList.forEach(role
                     -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role)));
             AuthUser principal = new AuthUser(userName, "", authorities);
-            principal.setUserId(customClaims.get("pk"));
+            principal.setUserId(hasUserDataInClaims ? customClaims.get("pk") : loggedInUser.getPk());
             principal.setToken(token);
             principal.setUserEmail(userEmail);
             principal.setUserRoles(roleList);

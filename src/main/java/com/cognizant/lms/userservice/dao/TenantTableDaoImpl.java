@@ -84,6 +84,7 @@ public class TenantTableDaoImpl implements TeanatTableDao {
       cognitoConfigDTO.setClientId(getValueOrNull(item, "appClientId"));
       cognitoConfigDTO.setIssuer(getValueOrNull(item, "awsCognitoIssuer"));
       cognitoConfigDTO.setCertUrl(getValueOrNull(item, "awsCertUrl"));
+      cognitoConfigDTO.setTenantCode(getValueOrNull(item, "pk"));
       log.info("Fetched Cognito Config for origin {}: {}", origin, cognitoConfigDTO);
       return cognitoConfigDTO;
     } catch (DynamoDbException dbe) {

@@ -12,5 +12,6 @@ public class CognitoConfigDTO {
   private String clientId;
   private String issuer;
   private String certUrl;
+  private String tenantCode;
 
 }
