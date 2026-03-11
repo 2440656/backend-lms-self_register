@@ -23,4 +23,8 @@ public interface UserDao {
 
 
   void addPasswordChangedDate(String pk, String sk,String emailId, String passwordChangedDate);
+
+  void updateUserAspirations(String pk, String sk, String selectedUserRole, String selectedInterests);
+
+  void updateUserPersonalDetails(String pk, String sk, String firstName, String lastName, String country, String institutionName, String currentRole);
 }

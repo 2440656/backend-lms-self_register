@@ -52,6 +52,14 @@ public class User {
   private String tutorialWatchDate;
   private String videoLaunchCount;
 
+  // Profile fields (separate from existing role field used for system permissions)
+  private String currentRole; // User's self-selected current role (e.g., "Developer", "Designer")
+
+  // Aspirational profile fields
+  private String selectedUserRole;
+  private String selectedInterests; // Comma-separated list
+  private String selectedRoles; // Comma-separated list
+
   private TenantDTO tenant;
 
   @DynamoDbIgnore

@@ -8,17 +8,10 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserPersonalDetailsDto {
-    private String userId;
-    private String firstName;
-    private String lastName;
-    private String emailAddress;
-    private String country;
-    private String institutionName;
-    private String currentRole;
+@Builder
+public class UpdateProfileAspirationsDto {
     private String selectedUserRole;
     private List<String> selectedInterests;
     private List<String> selectedRoles;

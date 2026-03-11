@@ -2377,4 +2377,16 @@ public class UserServiceImpl implements UserService {
         }
   }
 
+  @Override
+  public void updateUserPersonalDetails(String pk, String sk, String firstName, String lastName, String country, String institutionName, String currentRole) {
+    try {
+      log.info("Updating personal details for user with pk: {}", pk);
+      userDao.updateUserPersonalDetails(pk, sk, firstName, lastName, country, institutionName, currentRole);
+      log.info("Successfully updated personal details for user with pk: {}", pk);
+    } catch (Exception e) {
+      log.error("Error updating user personal details: {}", e.getMessage(), e);
+      throw new RuntimeException("Failed to update user personal details", e);
+    }
+  }
+
 }

@@ -5,21 +5,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserPersonalDetailsDto {
-    private String userId;
+@Builder
+public class UpdatePersonalDetailsDto {
     private String firstName;
     private String lastName;
-    private String emailAddress;
     private String country;
     private String institutionName;
     private String currentRole;
-    private String selectedUserRole;
-    private List<String> selectedInterests;
-    private List<String> selectedRoles;
 }

@@ -45,7 +45,6 @@ public class UserDaoImpl implements UserDao {
     userTable.putItem(user);
   }
 
-  //TODO need to use query instead of scan
   @Override
   public boolean userExists(String emailId) {
     return userTable.scan().items().stream().anyMatch(user -> user.getEmailId().equals(emailId));
@@ -205,6 +204,122 @@ public class UserDaoImpl implements UserDao {
     } catch (DynamoDbException e) {
       log.error("Error adding passwordChangedDate: {}", e.getMessage());
       throw new RuntimeException("Failed to add passwordChangedDate in DynamoDB", e);
+    }
+  }
+
+  @Override
+  public void updateUserAspirations(String pk, String sk, String selectedUserRole, String selectedInterests) {
+    try {
+      log.info("Updating aspirations for user with pk: {}", pk);
+      
+      StringBuilder updateExpression = new StringBuilder("SET ");
+      Map<String, AttributeValue> attributeValues = new HashMap<>();
+      boolean isFirstField = true;
+
+      if (selectedUserRole != null) {
+        updateExpression.append("selectedUserRole = :selectedUserRole");
+        attributeValues.put(":selectedUserRole", AttributeValue.builder().s(selectedUserRole).build());
+        isFirstField = false;
+      }
+
+      if (selectedInterests != null) {
+        if (!isFirstField) updateExpression.append(", ");
+        updateExpression.append("selectedInterests = :selectedInterests");
+        attributeValues.put(":selectedInterests", AttributeValue.builder().s(selectedInterests).build());
+      }
+
+      if (attributeValues.isEmpty()) {
+        log.info("No aspirations to update for user with pk: {}", pk);
+        return;
+      }
+
+      UpdateItemRequest updateRequest = UpdateItemRequest.builder()
+          .tableName(userTable.tableName())
+          .key(Map.of(
+              "pk", AttributeValue.builder().s(pk).build(),
+              "sk", AttributeValue.builder().s(sk).build()
+          ))
+          .updateExpression(updateExpression.toString())
+          .expressionAttributeValues(attributeValues)
+          .build();
+
+      UpdateItemResponse response = dynamoDbClient.updateItem(updateRequest);
+      log.info("User aspirations updated successfully: {}", response);
+    } catch (DynamoDbException e) {
+      log.error("Error updating user aspirations: {}", e.getMessage());
+      throw new RuntimeException("Failed to update user aspirations in DynamoDB", e);
+    }
+  }
+
+  @Override
+  public void updateUserPersonalDetails(String pk, String sk, String firstName, String lastName, String country, String institutionName, String currentRole) {
+    try {
+      log.info("Updating personal details for user with pk: {}", pk);
+      
+      StringBuilder updateExpression = new StringBuilder("SET ");
+      Map<String, AttributeValue> attributeValues = new HashMap<>();
+      boolean isFirstField = true;
+
+      if (firstName != null && !firstName.trim().isEmpty()) {
+        updateExpression.append("firstName = :firstName");
+        attributeValues.put(":firstName", AttributeValue.builder().s(firstName.trim()).build());
+        isFirstField = false;
+      }
+
+      if (lastName != null && !lastName.trim().isEmpty()) {
+        if (!isFirstField) updateExpression.append(", ");
+        updateExpression.append("lastName = :lastName");
+        attributeValues.put(":lastName", AttributeValue.builder().s(lastName.trim()).build());
+        isFirstField = false;
+      }
+
+      if (country != null && !country.trim().isEmpty()) {
+        if (!isFirstField) updateExpression.append(", ");
+        updateExpression.append("country = :country");
+        attributeValues.put(":country", AttributeValue.builder().s(country.trim()).build());
+        isFirstField = false;
+      }
+
+      if (institutionName != null && !institutionName.trim().isEmpty()) {
+        if (!isFirstField) updateExpression.append(", ");
+        updateExpression.append("institutionName = :institutionName");
+        attributeValues.put(":institutionName", AttributeValue.builder().s(institutionName.trim()).build());
+        isFirstField = false;
+      }
+
+      if (currentRole != null && !currentRole.trim().isEmpty()) {
+        if (!isFirstField) updateExpression.append(", ");
+        updateExpression.append("currentRole = :currentRole");
+        attributeValues.put(":currentRole", AttributeValue.builder().s(currentRole.trim()).build());
+        isFirstField = false;
+      }
+
+      if (attributeValues.isEmpty()) {
+        log.info("No personal details to update for user with pk: {}", pk);
+        return;
+      }
+
+      // Add modifiedOn timestamp
+      if (!isFirstField) updateExpression.append(", ");
+      updateExpression.append("modifiedOn = :modifiedOn");
+      attributeValues.put(":modifiedOn", AttributeValue.builder().s(String.valueOf(System.currentTimeMillis())).build());
+
+      // Build the update request
+      UpdateItemRequest updateRequest = UpdateItemRequest.builder()
+          .tableName(userTable.tableName())
+          .key(Map.of(
+              "pk", AttributeValue.builder().s(pk).build(),
+              "sk", AttributeValue.builder().s(sk).build()
+          ))
+          .updateExpression(updateExpression.toString())
+          .expressionAttributeValues(attributeValues)
+          .build();
+
+      UpdateItemResponse response = dynamoDbClient.updateItem(updateRequest);
+      log.info("User personal details updated successfully: {}", response);
+    } catch (DynamoDbException e) {
+      log.error("Error updating user personal details: {}", e.getMessage());
+      throw new RuntimeException("Failed to update user personal details in DynamoDB", e);
     }
   }
 }

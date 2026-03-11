@@ -3,9 +3,13 @@ package com.cognizant.lms.userservice.web;
 import com.cognizant.lms.userservice.constants.Constants;
 import com.cognizant.lms.userservice.domain.AuthUser;
 import com.cognizant.lms.userservice.domain.User;
+import com.cognizant.lms.userservice.dto.AspirationalDataResponseDto;
 import com.cognizant.lms.userservice.dto.HttpResponse;
+import com.cognizant.lms.userservice.dto.UpdatePersonalDetailsDto;
+import com.cognizant.lms.userservice.dto.UpdateProfileAspirationsDto;
 import com.cognizant.lms.userservice.dto.UserHomeProfileDto;
 import com.cognizant.lms.userservice.dto.UserPersonalDetailsDto;
+import com.cognizant.lms.userservice.service.AspirationalRoleService;
 import com.cognizant.lms.userservice.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -14,8 +18,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @Slf4j
@@ -23,9 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserProfileController {
 
     private final UserService userService;
+    private final AspirationalRoleService aspirationalRoleService;
 
-    public UserProfileController(UserService userService) {
+    public UserProfileController(UserService userService, AspirationalRoleService aspirationalRoleService) {
         this.userService = userService;
+        this.aspirationalRoleService = aspirationalRoleService;
     }
 
     @GetMapping("/home")
@@ -122,6 +132,17 @@ public class UserProfileController {
     }
 
     private UserPersonalDetailsDto buildPersonalDetails(User user) {
+        // Parse comma-separated strings into lists
+        List<String> selectedInterests = null;
+        if (user.getSelectedInterests() != null && !user.getSelectedInterests().trim().isEmpty()) {
+            selectedInterests = java.util.Arrays.asList(user.getSelectedInterests().split(","));
+        }
+
+        List<String> selectedRoles = null;
+        if (user.getSelectedRoles() != null && !user.getSelectedRoles().trim().isEmpty()) {
+            selectedRoles = java.util.Arrays.asList(user.getSelectedRoles().split(","));
+        }
+
         return UserPersonalDetailsDto.builder()
                 .userId(user.getPk())
                 .firstName(user.getFirstName())
@@ -129,7 +150,10 @@ public class UserProfileController {
                 .emailAddress(user.getEmailId())
                 .country(user.getCountry())
                 .institutionName(user.getInstitutionName())
-                .currentRole(user.getRole())
+                .currentRole(user.getCurrentRole() != null ? user.getCurrentRole() : user.getRole()) // Use currentRole if available, fallback to role
+                .selectedUserRole(user.getSelectedUserRole())
+                .selectedInterests(selectedInterests)
+                .selectedRoles(selectedRoles)
                 .build();
     }
 
@@ -139,5 +163,131 @@ public class UserProfileController {
         response.setData(null);
         response.setError(errorMessage);
         return ResponseEntity.status(status).body(response);
+    }
+
+    @GetMapping("/aspirational-data")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> getAspirationalData() {
+        try {
+            log.info("Fetching aspirational data for dropdowns");
+            AspirationalDataResponseDto aspirationalData = aspirationalRoleService.getAllAspirationalData();
+
+            log.info("Aspirational data fetched - UserRoles: {}, Interests: {}, Roles: {}", 
+                    aspirationalData.getUserRoles().size(), 
+                    aspirationalData.getInterests().size(), 
+                    aspirationalData.getRoles().size());
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData(aspirationalData);
+            response.setError(null);
+
+            log.info("Successfully fetched aspirational data");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error fetching aspirational data: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to fetch aspirational data");
+        }
+    }
+
+    @GetMapping("/aspirational-data/search")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> searchAspirationalData(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String query,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String type) {
+        try {
+            log.info("Searching aspirational data with query: '{}', type: '{}'", query, type);
+            AspirationalDataResponseDto allData = aspirationalRoleService.getAllAspirationalData();
+            AspirationalDataResponseDto filteredData = aspirationalRoleService.searchAspirationalData(allData, query, type);
+
+            log.info("Search results - UserRoles: {}, Interests: {}, Roles: {}", 
+                    filteredData.getUserRoles().size(), 
+                    filteredData.getInterests().size(), 
+                    filteredData.getRoles().size());
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData(filteredData);
+            response.setError(null);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error searching aspirational data: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to search aspirational data");
+        }
+    }
+
+    @PutMapping("/personal-details")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> updatePersonalDetails(@RequestBody UpdatePersonalDetailsDto personalDetailsDto) {
+        try {
+            User user = fetchCurrentActiveUser();
+            if (user == null) {
+                log.error("User not found or inactive");
+                return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
+            }
+
+            log.info("Updating personal details for user: {}", user.getEmailId());
+            
+            // Update user personal details in database
+            userService.updateUserPersonalDetails(
+                user.getPk(), 
+                user.getSk(), 
+                personalDetailsDto.getFirstName(),
+                personalDetailsDto.getLastName(),
+                personalDetailsDto.getCountry(),
+                personalDetailsDto.getInstitutionName(),
+                personalDetailsDto.getCurrentRole()
+            );
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData("Personal details updated successfully");
+            response.setError(null);
+
+            log.info("Successfully updated personal details for user: {}", user.getEmailId());
+            return ResponseEntity.ok(response);
+        } catch (ClassCastException e) {
+            log.error("Authentication principal is not of type AuthUser: {}", e.getMessage());
+            return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid authentication token");
+        } catch (NullPointerException e) {
+            log.error("Authentication or user data is null: {}", e.getMessage());
+            return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Authentication required");
+        } catch (Exception e) {
+            log.error("Error updating personal details: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update personal details");
+        }
+    }
+
+    @PutMapping("/aspirations")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> updateUserAspirations(@RequestBody UpdateProfileAspirationsDto aspirationsDto) {
+        try {
+            User user = fetchCurrentActiveUser();
+            if (user == null) {
+                log.error("User not found or inactive");
+                return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
+            }
+
+            log.info("Updating aspirations for user: {}", user.getEmailId());
+            aspirationalRoleService.updateUserAspirations(user.getPk(), user.getSk(), aspirationsDto);
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData("Aspirations updated successfully");
+            response.setError(null);
+
+            log.info("Successfully updated aspirations for user: {}", user.getEmailId());
+            return ResponseEntity.ok(response);
+        } catch (ClassCastException e) {
+            log.error("Authentication principal is not of type AuthUser: {}", e.getMessage());
+            return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid authentication token");
+        } catch (NullPointerException e) {
+            log.error("Authentication or user data is null: {}", e.getMessage());
+            return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Authentication required");
+        } catch (Exception e) {
+            log.error("Error updating user aspirations: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update aspirations");
+        }
     }
 }
