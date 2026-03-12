@@ -132,6 +132,7 @@ public class UserProfileController {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .displayName(displayName)
+                .profilePhotoUrl(user.getProfilePhotoUrl())  // map stored S3 URL
                 .build();
     }
 
@@ -340,6 +341,41 @@ public class UserProfileController {
         } catch (Exception e) {
             log.error("Error uploading profile photo: {}", e.getMessage(), e);
             return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload profile photo");
+        }
+    }
+
+    @GetMapping("/profile-photo")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> getProfilePhoto() {
+        try {
+            User user = fetchCurrentActiveUser();
+            if (user == null) {
+                log.error("User not found or inactive");
+                return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
+            }
+
+            String photoUrl = user.getProfilePhotoUrl();
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData(ProfilePhotoUploadResponse.builder()
+                    .photoUrl(photoUrl)
+                    .message(photoUrl != null ? "Profile photo found" : "No profile photo set")
+                    .success(photoUrl != null)
+                    .build());
+            response.setError(null);
+
+            log.info("Fetched profile photo URL for user: {}", user.getEmailId());
+            return ResponseEntity.ok(response);
+        } catch (ClassCastException e) {
+            log.error("Authentication principal is not of type AuthUser: {}", e.getMessage());
+            return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid authentication token");
+        } catch (NullPointerException e) {
+            log.error("Authentication or user data is null: {}", e.getMessage());
+            return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Authentication required");
+        } catch (Exception e) {
+            log.error("Error fetching profile photo: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to fetch profile photo");
         }
     }
 }
