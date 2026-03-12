@@ -329,8 +329,17 @@ public class UserDaoImpl implements UserDao {
       log.info("Updating profile photo URL for user with pk: {}", pk);
 
       Map<String, AttributeValue> attributeValues = new HashMap<>();
-      attributeValues.put(":profilePhotoUrl", AttributeValue.builder().s(profilePhotoUrl).build());
       attributeValues.put(":modifiedOn", AttributeValue.builder().s(String.valueOf(System.currentTimeMillis())).build());
+
+      String updateExpression;
+      if (profilePhotoUrl == null || profilePhotoUrl.trim().isEmpty()) {
+        // Remove the attribute if null/empty
+        updateExpression = "REMOVE profilePhotoUrl SET modifiedOn = :modifiedOn";
+      } else {
+        // Set the attribute value
+        attributeValues.put(":profilePhotoUrl", AttributeValue.builder().s(profilePhotoUrl).build());
+        updateExpression = "SET profilePhotoUrl = :profilePhotoUrl, modifiedOn = :modifiedOn";
+      }
 
       UpdateItemRequest updateRequest = UpdateItemRequest.builder()
           .tableName(userTable.tableName())
@@ -338,7 +347,7 @@ public class UserDaoImpl implements UserDao {
               "pk", AttributeValue.builder().s(pk).build(),
               "sk", AttributeValue.builder().s(sk).build()
           ))
-          .updateExpression("SET profilePhotoUrl = :profilePhotoUrl, modifiedOn = :modifiedOn")
+          .updateExpression(updateExpression)
           .expressionAttributeValues(attributeValues)
           .build();
 

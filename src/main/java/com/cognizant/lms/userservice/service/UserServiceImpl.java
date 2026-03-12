@@ -2425,4 +2425,69 @@ public class UserServiceImpl implements UserService {
     }
   }
 
+  @Override
+  public void deleteProfilePhoto(String pk, String sk, String photoUrl) throws Exception {
+    try {
+      log.info("Deleting profile photo for user with pk: {}", pk);
+
+      // Extract S3 key from URL
+      // URL format: https://bucket-name.s3.amazonaws.com/profile-photos/USER#email/profile-photo-timestamp.jpg
+      String s3Key = extractS3KeyFromUrl(photoUrl);
+      
+      if (s3Key != null && !s3Key.isEmpty()) {
+        // Delete from S3
+        s3Utils.deleteFileFromS3(bucketName, s3Key);
+        log.info("Deleted file from S3: {}", s3Key);
+      }
+
+      // Update DynamoDB to clear the profilePhotoUrl field
+      userDao.updateProfilePhotoUrl(pk, sk, null);
+      
+      log.info("Successfully deleted profile photo for user with pk: {}", pk);
+    } catch (Exception e) {
+      log.error("Error deleting profile photo for user with pk: {} and sk: {}: {}", pk, sk, e.getMessage(), e);
+      throw new FileStorageException("Failed to delete profile photo: " + e.getMessage());
+    }
+  }
+
+  private String extractS3KeyFromUrl(String photoUrl) {
+    try {
+      // Extract key from URL like: https://bucket.s3.amazonaws.com/profile-photos/USER#email/file.jpg
+      // Result should be: profile-photos/USER#email/file.jpg
+      if (photoUrl.contains(".s3.amazonaws.com/")) {
+        String[] parts = photoUrl.split("\\.s3\\.amazonaws\\.com/");
+        if (parts.length > 1) {
+          return parts[1].split("\\?")[0]; // Remove query params if any
+        }
+      }
+      return null;
+    } catch (Exception e) {
+      log.error("Error extracting S3 key from URL: {}", photoUrl, e);
+      return null;
+    }
+  }
+
+  @Override
+  public String getPresignedProfilePhotoUrl(String photoUrl) throws Exception {
+    try {
+      if (photoUrl == null || photoUrl.trim().isEmpty()) {
+        return null;
+      }
+
+      // Extract S3 key from the stored URL
+      String s3Key = extractS3KeyFromUrl(photoUrl);
+      
+      if (s3Key == null || s3Key.isEmpty()) {
+        log.error("Could not extract S3 key from URL: {}", photoUrl);
+        return photoUrl; // Return original URL as fallback
+      }
+
+      // Generate presigned URL valid for 60 minutes
+      return s3Utils.generatePresignedUrl(bucketName, s3Key, 60);
+    } catch (Exception e) {
+      log.error("Error generating presigned URL: {}", e.getMessage(), e);
+      return photoUrl; // Return original URL as fallback
+    }
+  }
+
 }

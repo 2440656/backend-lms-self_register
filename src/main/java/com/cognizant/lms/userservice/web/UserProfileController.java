@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -127,12 +128,24 @@ public class UserProfileController {
 
     private UserHomeProfileDto buildHomeProfile(User user) {
         String displayName = String.format("%s %s", user.getFirstName(), user.getLastName()).trim();
+        
+        // Get presigned URL for profile photo if it exists
+        String profilePhotoUrl = null;
+        try {
+            if (user.getProfilePhotoUrl() != null && !user.getProfilePhotoUrl().trim().isEmpty()) {
+                profilePhotoUrl = userService.getPresignedProfilePhotoUrl(user.getProfilePhotoUrl());
+            }
+        } catch (Exception e) {
+            log.error("Error generating presigned URL for profile photo: {}", e.getMessage());
+            profilePhotoUrl = null; // Return null if presigning fails
+        }
+        
         return UserHomeProfileDto.builder()
                 .userId(user.getPk())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .displayName(displayName)
-                .profilePhotoUrl(user.getProfilePhotoUrl())  // map stored S3 URL
+                .profilePhotoUrl(profilePhotoUrl)
                 .build();
     }
 
@@ -354,14 +367,20 @@ public class UserProfileController {
                 return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
             }
 
-            String photoUrl = user.getProfilePhotoUrl();
+            String storedPhotoUrl = user.getProfilePhotoUrl();
+            String presignedUrl = null;
+            
+            if (storedPhotoUrl != null && !storedPhotoUrl.trim().isEmpty()) {
+                // Generate presigned URL for access
+                presignedUrl = userService.getPresignedProfilePhotoUrl(storedPhotoUrl);
+            }
 
             HttpResponse response = new HttpResponse();
             response.setStatus(HttpStatus.OK.value());
             response.setData(ProfilePhotoUploadResponse.builder()
-                    .photoUrl(photoUrl)
-                    .message(photoUrl != null ? "Profile photo found" : "No profile photo set")
-                    .success(photoUrl != null)
+                    .photoUrl(presignedUrl)
+                    .message(presignedUrl != null ? "Profile photo found" : "No profile photo set")
+                    .success(presignedUrl != null)
                     .build());
             response.setError(null);
 
@@ -376,6 +395,43 @@ public class UserProfileController {
         } catch (Exception e) {
             log.error("Error fetching profile photo: {}", e.getMessage(), e);
             return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to fetch profile photo");
+        }
+    }
+
+    @DeleteMapping("/profile-photo")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> deleteProfilePhoto() {
+        try {
+            User user = fetchCurrentActiveUser();
+            if (user == null) {
+                log.error("User not found or inactive");
+                return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
+            }
+
+            String currentPhotoUrl = user.getProfilePhotoUrl();
+            if (currentPhotoUrl == null || currentPhotoUrl.trim().isEmpty()) {
+                return buildErrorResponse(HttpStatus.BAD_REQUEST, "No profile photo to delete");
+            }
+
+            log.info("Deleting profile photo for user: {}", user.getEmailId());
+            
+            // Delete from S3 and update DB
+            userService.deleteProfilePhoto(user.getPk(), user.getSk(), currentPhotoUrl);
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData(ProfilePhotoUploadResponse.builder()
+                    .photoUrl(null)
+                    .message("Profile photo deleted successfully")
+                    .success(true)
+                    .build());
+            response.setError(null);
+
+            log.info("Successfully deleted profile photo for user: {}", user.getEmailId());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error deleting profile photo: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete profile photo");
         }
     }
 }

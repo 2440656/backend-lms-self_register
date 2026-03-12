@@ -107,4 +107,8 @@ public interface UserService {
   void updateUserPersonalDetails(String pk, String sk, String firstName, String lastName, String country, String institutionName, String currentRole);
 
   String uploadProfilePhoto(String pk, String sk, MultipartFile file) throws Exception;
+
+  void deleteProfilePhoto(String pk, String sk, String photoUrl) throws Exception;
+
+  String getPresignedProfilePhotoUrl(String photoUrl) throws Exception;
 }
