@@ -134,4 +134,23 @@ public class S3Util {
       throw new IOException("Error downloading file from S3 for Deativate User", e);
     }
   }
+
+  public void uploadFileToS3(String bucketName, String key, byte[] fileBytes, String contentType) {
+    try {
+      log.info("Uploading file to S3 bucket: {} with key: {}", bucketName, key);
+      
+      PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+          .bucket(bucketName)
+          .key(key)
+          .contentType(contentType)
+          .build();
+      
+      s3ThumbnailClient.putObject(putObjectRequest, RequestBody.fromBytes(fileBytes));
+      
+      log.info("File uploaded successfully to S3: {}", key);
+    } catch (S3Exception e) {
+      log.error("Error uploading file to S3: {}", e.getMessage());
+      throw new RuntimeException("Failed to upload file to S3", e);
+    }
+  }
 }

@@ -60,6 +60,9 @@ public class User {
   private String selectedInterests; // Comma-separated list
   private String selectedRoles; // Comma-separated list
 
+  // Profile photo field
+  private String profilePhotoUrl; // S3 URL of the user's profile photo
+
   private TenantDTO tenant;
 
   @DynamoDbIgnore

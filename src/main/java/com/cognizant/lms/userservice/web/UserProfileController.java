@@ -5,6 +5,7 @@ import com.cognizant.lms.userservice.domain.AuthUser;
 import com.cognizant.lms.userservice.domain.User;
 import com.cognizant.lms.userservice.dto.AspirationalDataResponseDto;
 import com.cognizant.lms.userservice.dto.HttpResponse;
+import com.cognizant.lms.userservice.dto.ProfilePhotoUploadResponse;
 import com.cognizant.lms.userservice.dto.UpdatePersonalDetailsDto;
 import com.cognizant.lms.userservice.dto.UpdateProfileAspirationsDto;
 import com.cognizant.lms.userservice.dto.UserHomeProfileDto;
@@ -19,9 +20,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -288,6 +292,54 @@ public class UserProfileController {
         } catch (Exception e) {
             log.error("Error updating user aspirations: {}", e.getMessage(), e);
             return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update aspirations");
+        }
+    }
+
+    @PostMapping("/profile-photo")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> uploadProfilePhoto(@RequestParam("file") MultipartFile file) {
+        try {
+            User user = fetchCurrentActiveUser();
+            if (user == null) {
+                log.error("User not found or inactive");
+                return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
+            }
+
+            // Validate file
+            if (file.isEmpty()) {
+                return buildErrorResponse(HttpStatus.BAD_REQUEST, "File is empty");
+            }
+
+            // Validate file type (only images)
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                return buildErrorResponse(HttpStatus.BAD_REQUEST, "Only image files are allowed");
+            }
+
+            // Validate file size (max 5MB)
+            if (file.getSize() > 5 * 1024 * 1024) {
+                return buildErrorResponse(HttpStatus.BAD_REQUEST, "File size must be less than 5MB");
+            }
+
+            log.info("Uploading profile photo for user: {}", user.getEmailId());
+            
+            // Upload to S3 and get URL
+            String photoUrl = userService.uploadProfilePhoto(user.getPk(), user.getSk(), file);
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData(ProfilePhotoUploadResponse.builder()
+                    .photoUrl(photoUrl)
+                    .message("Profile photo uploaded successfully")
+                    .success(true)
+                    .build());
+            response.setError(null);
+
+            log.info("Successfully uploaded profile photo for user: {}", user.getEmailId());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error uploading profile photo: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload profile photo");
         }
     }
 }

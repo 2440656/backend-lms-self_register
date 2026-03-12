@@ -105,4 +105,6 @@ public interface UserService {
   boolean addAdminUser(User user,String type, String tenantCode)throws Exception;
 
   void updateUserPersonalDetails(String pk, String sk, String firstName, String lastName, String country, String institutionName, String currentRole);
+
+  String uploadProfilePhoto(String pk, String sk, MultipartFile file) throws Exception;
 }

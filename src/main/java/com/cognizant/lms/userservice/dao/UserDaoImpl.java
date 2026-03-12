@@ -322,4 +322,31 @@ public class UserDaoImpl implements UserDao {
       throw new RuntimeException("Failed to update user personal details in DynamoDB", e);
     }
   }
+
+  @Override
+  public void updateProfilePhotoUrl(String pk, String sk, String profilePhotoUrl) {
+    try {
+      log.info("Updating profile photo URL for user with pk: {}", pk);
+
+      Map<String, AttributeValue> attributeValues = new HashMap<>();
+      attributeValues.put(":profilePhotoUrl", AttributeValue.builder().s(profilePhotoUrl).build());
+      attributeValues.put(":modifiedOn", AttributeValue.builder().s(String.valueOf(System.currentTimeMillis())).build());
+
+      UpdateItemRequest updateRequest = UpdateItemRequest.builder()
+          .tableName(userTable.tableName())
+          .key(Map.of(
+              "pk", AttributeValue.builder().s(pk).build(),
+              "sk", AttributeValue.builder().s(sk).build()
+          ))
+          .updateExpression("SET profilePhotoUrl = :profilePhotoUrl, modifiedOn = :modifiedOn")
+          .expressionAttributeValues(attributeValues)
+          .build();
+
+      UpdateItemResponse response = dynamoDbClient.updateItem(updateRequest);
+      log.info("Profile photo URL updated successfully: {}", response);
+    } catch (DynamoDbException e) {
+      log.error("Error updating profile photo URL: {}", e.getMessage());
+      throw new RuntimeException("Failed to update profile photo URL in DynamoDB", e);
+    }
+  }
 }

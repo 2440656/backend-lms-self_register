@@ -27,4 +27,6 @@ public interface UserDao {
   void updateUserAspirations(String pk, String sk, String selectedUserRole, String selectedInterests);
 
   void updateUserPersonalDetails(String pk, String sk, String firstName, String lastName, String country, String institutionName, String currentRole);
+
+  void updateProfilePhotoUrl(String pk, String sk, String profilePhotoUrl);
 }

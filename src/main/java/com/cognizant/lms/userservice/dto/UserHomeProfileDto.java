@@ -14,4 +14,5 @@ public class UserHomeProfileDto {
     private String firstName;
     private String lastName;
     private String displayName;
+    private String profilePhotoUrl;
 }

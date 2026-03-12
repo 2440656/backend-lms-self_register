@@ -2389,4 +2389,40 @@ public class UserServiceImpl implements UserService {
     }
   }
 
+  @Override
+  public String uploadProfilePhoto(String pk, String sk, MultipartFile file) throws Exception {
+    try {
+      log.info("Uploading profile photo for user with pk: {} and sk: {}", pk, sk);
+      
+      // Generate unique filename with timestamp
+      String timestamp = Instant.now().toEpochMilli() + "";
+      String originalFilename = file.getOriginalFilename();
+      String fileExtension = originalFilename != null && originalFilename.contains(".") 
+          ? originalFilename.substring(originalFilename.lastIndexOf(".")) 
+          : ".jpg";
+      String fileName = "profile-photo-" + timestamp + fileExtension;
+      
+      // Define S3 path: profile-photos/{pk}/
+      String s3Key = "profile-photos/" + pk + "/" + fileName;
+      
+      log.info("Uploading file to S3 with key: {}", s3Key);
+      
+      // Upload to S3
+      s3Utils.uploadFileToS3(bucketName, s3Key, file.getBytes(), file.getContentType());
+      
+      // Construct S3 URL
+      String photoUrl = String.format("https://%s.s3.amazonaws.com/%s", bucketName, s3Key);
+      
+      // Update user record with photo URL
+      log.info("Updating user record with profile photo URL");
+      userDao.updateProfilePhotoUrl(pk, sk, photoUrl);
+      
+      log.info("Successfully uploaded profile photo for user with pk: {}", pk);
+      return photoUrl;
+    } catch (Exception e) {
+      log.error("Error uploading profile photo for user with pk: {} and sk: {}: {}", pk, sk, e.getMessage(), e);
+      throw new FileStorageException("Failed to upload profile photo: " + e.getMessage());
+    }
+  }
+
 }
