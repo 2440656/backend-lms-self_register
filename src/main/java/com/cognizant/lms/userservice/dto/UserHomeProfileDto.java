@@ -15,4 +15,6 @@ public class UserHomeProfileDto {
     private String lastName;
     private String displayName;
     private String profilePhotoUrl;
+    private Boolean termsShown;
+    private Boolean welcomeShown;
 }

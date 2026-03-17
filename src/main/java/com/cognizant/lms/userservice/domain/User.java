@@ -63,6 +63,10 @@ public class User {
   // Profile photo field
   private String profilePhotoUrl; // S3 URL of the user's profile photo
 
+  // Modal tracking fields
+  private String termsShown; // "true" if terms of use modal has been shown to user
+  private String welcomeShown; // "true" if welcome modal has been shown to user
+
   private TenantDTO tenant;
 
   @DynamoDbIgnore

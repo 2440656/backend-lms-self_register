@@ -2490,4 +2490,28 @@ public class UserServiceImpl implements UserService {
     }
   }
 
+  @Override
+  public void updateModalShownStatus(String pk, String sk, String modalType, boolean shown) {
+    try {
+      log.info("Updating modal shown status for user with pk: {}, modalType: {}, shown: {}", pk, modalType, shown);
+      userDao.updateModalShownStatus(pk, sk, modalType, shown);
+      log.info("Successfully updated modal shown status for user with pk: {}", pk);
+    } catch (Exception e) {
+      log.error("Error updating modal shown status: {}", e.getMessage(), e);
+      throw new RuntimeException("Failed to update modal shown status", e);
+    }
+  }
+
+  @Override
+  public void updateTermsAccepted(String pk, String sk) {
+    try {
+      log.info("Updating termsAccepted for user with pk: {}", pk);
+      userDao.updateTermsAccepted(pk, sk);
+      log.info("Successfully updated termsAccepted for user with pk: {}", pk);
+    } catch (Exception e) {
+      log.error("Error updating termsAccepted: {}", e.getMessage(), e);
+      throw new RuntimeException("Failed to update termsAccepted", e);
+    }
+  }
+
 }

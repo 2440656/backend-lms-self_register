@@ -29,4 +29,8 @@ public interface UserDao {
   void updateUserPersonalDetails(String pk, String sk, String firstName, String lastName, String country, String institutionName, String currentRole);
 
   void updateProfilePhotoUrl(String pk, String sk, String profilePhotoUrl);
+
+  void updateModalShownStatus(String pk, String sk, String modalType, boolean shown);
+
+  void updateTermsAccepted(String pk, String sk);
 }

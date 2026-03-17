@@ -111,4 +111,8 @@ public interface UserService {
   void deleteProfilePhoto(String pk, String sk, String photoUrl) throws Exception;
 
   String getPresignedProfilePhotoUrl(String photoUrl) throws Exception;
+
+  void updateModalShownStatus(String pk, String sk, String modalType, boolean shown);
+  
+  void updateTermsAccepted(String pk, String sk);
 }

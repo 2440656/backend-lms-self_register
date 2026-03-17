@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
 import java.lang.reflect.Field;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -356,6 +357,67 @@ public class UserDaoImpl implements UserDao {
     } catch (DynamoDbException e) {
       log.error("Error updating profile photo URL: {}", e.getMessage());
       throw new RuntimeException("Failed to update profile photo URL in DynamoDB", e);
+    }
+  }
+
+  @Override
+  public void updateModalShownStatus(String pk, String sk, String modalType, boolean shown) {
+    try {
+      log.info("Updating modal shown status for user with pk: {}, modalType: {}", pk, modalType);
+      
+      String fieldName = modalType; // "termsShown" or "welcomeShown"
+      String updateExpression = "SET " + fieldName + " = :shown";
+      
+      Map<String, AttributeValue> attributeValues = new HashMap<>();
+      attributeValues.put(":shown", AttributeValue.builder().s(shown ? "true" : "false").build());
+
+      Map<String, AttributeValue> key = new HashMap<>();
+      key.put("pk", AttributeValue.builder().s(pk).build());
+      key.put("sk", AttributeValue.builder().s(sk).build());
+
+      UpdateItemRequest updateRequest = UpdateItemRequest.builder()
+          .tableName(userTable.tableName())
+          .key(key)
+          .updateExpression(updateExpression)
+          .expressionAttributeValues(attributeValues)
+          .build();
+
+      UpdateItemResponse response = dynamoDbClient.updateItem(updateRequest);
+      log.info("Modal shown status updated successfully: {}", response);
+    } catch (DynamoDbException e) {
+      log.error("Error updating modal shown status: {}", e.getMessage());
+      throw new RuntimeException("Failed to update modal shown status in DynamoDB", e);
+    }
+  }
+
+  @Override
+  public void updateTermsAccepted(String pk, String sk) {
+    try {
+      log.info("Updating termsAccepted and termsAcceptedDate for user with pk: {}", pk);
+      
+      String currentTimestamp = Instant.now().toString();
+      String updateExpression = "SET termsAccepted = :accepted, termsAcceptedDate = :date";
+      
+      Map<String, AttributeValue> attributeValues = new HashMap<>();
+      attributeValues.put(":accepted", AttributeValue.builder().s("Y").build());
+      attributeValues.put(":date", AttributeValue.builder().s(currentTimestamp).build());
+
+      Map<String, AttributeValue> key = new HashMap<>();
+      key.put("pk", AttributeValue.builder().s(pk).build());
+      key.put("sk", AttributeValue.builder().s(sk).build());
+
+      UpdateItemRequest updateRequest = UpdateItemRequest.builder()
+          .tableName(userTable.tableName())
+          .key(key)
+          .updateExpression(updateExpression)
+          .expressionAttributeValues(attributeValues)
+          .build();
+
+      UpdateItemResponse response = dynamoDbClient.updateItem(updateRequest);
+      log.info("Terms accepted status updated successfully with timestamp: {}", currentTimestamp);
+    } catch (DynamoDbException e) {
+      log.error("Error updating terms accepted status: {}", e.getMessage());
+      throw new RuntimeException("Failed to update terms accepted status in DynamoDB", e);
     }
   }
 }

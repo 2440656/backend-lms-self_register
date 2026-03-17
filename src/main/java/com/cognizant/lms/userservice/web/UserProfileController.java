@@ -140,12 +140,18 @@ public class UserProfileController {
             profilePhotoUrl = null; // Return null if presigning fails
         }
         
+        // Parse modal shown flags - use existing termsAccepted instead of termsShown
+        Boolean termsShown = "Y".equalsIgnoreCase(user.getTermsAccepted());
+        Boolean welcomeShown = "true".equalsIgnoreCase(user.getWelcomeShown());
+        
         return UserHomeProfileDto.builder()
                 .userId(user.getPk())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .displayName(displayName)
                 .profilePhotoUrl(profilePhotoUrl)
+                .termsShown(termsShown)
+                .welcomeShown(welcomeShown)
                 .build();
     }
 
@@ -432,6 +438,59 @@ public class UserProfileController {
         } catch (Exception e) {
             log.error("Error deleting profile photo: {}", e.getMessage(), e);
             return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete profile photo");
+        }
+    }
+
+    @PutMapping("/mark-terms-shown")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> markTermsShown() {
+        try {
+            User user = fetchCurrentActiveUser();
+            if (user == null) {
+                log.error("User not found or inactive");
+                return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
+            }
+
+            log.info("Marking terms as accepted for user: {}", user.getEmailId());
+            // Update both termsAccepted and termsAcceptedDate
+            userService.updateTermsAccepted(user.getPk(), user.getSk());
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData("Terms marked as accepted");
+            response.setError(null);
+
+            log.info("Successfully marked terms as accepted for user: {}", user.getEmailId());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error marking terms as accepted: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to mark terms as accepted");
+        }
+    }
+
+    @PutMapping("/mark-welcome-shown")
+    @PreAuthorize("hasAnyRole('system-admin','super-admin','content-author','learner','mentor')")
+    public ResponseEntity<HttpResponse> markWelcomeShown() {
+        try {
+            User user = fetchCurrentActiveUser();
+            if (user == null) {
+                log.error("User not found or inactive");
+                return buildErrorResponse(HttpStatus.NOT_FOUND, "User not found or inactive");
+            }
+
+            log.info("Marking welcome as shown for user: {}", user.getEmailId());
+            userService.updateModalShownStatus(user.getPk(), user.getSk(), "welcomeShown", true);
+
+            HttpResponse response = new HttpResponse();
+            response.setStatus(HttpStatus.OK.value());
+            response.setData("Welcome marked as shown");
+            response.setError(null);
+
+            log.info("Successfully marked welcome as shown for user: {}", user.getEmailId());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error marking welcome as shown: {}", e.getMessage(), e);
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to mark welcome as shown");
         }
     }
 }
